@@ -1,6 +1,6 @@
 "use client";
 
-export default function Skeleton({ width = "100%", height = 16, radius = 6, className = "", style }) {
+export function Skeleton({ width = "100%", height = 16, radius = 6, className = "", style }) {
   return (
     <span
       className={`skeleton ${className}`.trim()}
@@ -9,6 +9,8 @@ export default function Skeleton({ width = "100%", height = 16, radius = 6, clas
     />
   );
 }
+
+export default Skeleton;
 
 /** Skeleton placeholder rows for a data table. */
 export function SkeletonTable({ rows = 5, cols = 5 }) {
