@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getToken, clearToken } from "../lib/api";
+import { IconPhone } from "./ui/Icons";
+
+const LINKS = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/contacts", label: "Contacts" },
+  { href: "/calls", label: "Calls" },
+];
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -27,31 +34,38 @@ export default function Navbar() {
     router.push("/login");
   }
 
+  function isActive(href) {
+    return href === "/calls" ? pathname.startsWith("/calls") : pathname === href;
+  }
+
   return (
     <header className="navbar">
       <div className="nav-container">
         <Link href="/dashboard" className="nav-brand">
-          <span className="brand-dot" />
-          <strong>SERP Hawk</strong> <span className="brand-tag">AI Calling Agent</span>
+          <span className="brand-mark" aria-hidden="true">
+            <IconPhone size={15} />
+          </span>
+          Calling Agent
         </Link>
-        <nav className="nav-links">
-          <Link href="/dashboard" className={`nav-link ${pathname === "/dashboard" ? "active" : ""}`}>
-            Dashboard
-          </Link>
-          <Link href="/contacts" className={`nav-link ${pathname === "/contacts" ? "active" : ""}`}>
-            Contacts
-          </Link>
-          <Link href="/calls" className={`nav-link ${pathname.startsWith("/calls") ? "active" : ""}`}>
-            Calls
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="secondary"
-            style={{ marginTop: 0, padding: "5px 10px", fontSize: 12 }}
-          >
-            Logout
-          </button>
+
+        <nav className="nav-links" aria-label="Main">
+          {LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`nav-link ${isActive(link.href) ? "active" : ""}`}
+              aria-current={isActive(link.href) ? "page" : undefined}
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
+
+        <span className="nav-spacer" />
+
+        <button type="button" className="btn btn-ghost btn-sm" onClick={handleLogout}>
+          Logout
+        </button>
       </div>
     </header>
   );

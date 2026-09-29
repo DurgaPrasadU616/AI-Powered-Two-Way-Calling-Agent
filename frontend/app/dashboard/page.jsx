@@ -1,107 +1,141 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "../../lib/api";
-
-function formatDuration(sec) {
-  if (sec == null || isNaN(sec)) return "00:00";
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+import { formatDuration, formatDate } from "../../lib/format";
+import PageHeader from "../../components/ui/PageHeader";
+import StatCard from "../../components/ui/StatCard";
+import Card from "../../components/ui/Card";
+import Badge from "../../components/ui/Badge";
+import Alert from "../../components/ui/Alert";
+import Button from "../../components/ui/Button";
+import EmptyState from "../../components/ui/EmptyState";
+import { SkeletonCards, Skeleton } from "../../components/ui/Skeleton";
+import { IconArrowRight, IconPhone } from "../../components/ui/Icons";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState(null);
+  const [recent, setRecent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function fetchStats() {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await apiFetch("/dashboard/stats");
-        if (!res.ok) {
-          throw new Error(`Failed to load stats (${res.status})`);
-        }
-        const data = await res.json();
-        setStats(data);
-      } catch (err) {
-        setError(err.message || "Failed to load dashboard statistics");
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [statsRes, callsRes] = await Promise.all([
+        apiFetch("/dashboard/stats"),
+        apiFetch("/calls?page=1&page_size=5"),
+      ]);
+      if (!statsRes.ok) throw new Error(`Could not load stats (${statsRes.status})`);
+      if (!callsRes.ok) throw new Error(`Could not load recent calls (${callsRes.status})`);
+      const statsData = await statsRes.json();
+      const callsData = await callsRes.json();
+      setStats(statsData);
+      setRecent(callsData.items || []);
+    } catch (err) {
+      setError(err.message || "Failed to load the dashboard");
+    } finally {
+      setLoading(false);
     }
-    fetchStats();
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const STAT_DEFS = stats
+    ? [
+        { label: "Total calls", value: stats.total_calls, hint: "Everything you have dialled" },
+        { label: "Completed", value: stats.completed_calls, hint: "Finished normally" },
+        { label: "Failed / no answer", value: stats.failed_calls, hint: "Worth retrying" },
+        { label: "Interested leads", value: stats.interested_leads, hint: "Outcome: interested" },
+        { label: "Follow-ups", value: stats.followups_required, hint: "Marked for a callback" },
+        {
+          label: "Avg duration",
+          value: formatDuration(stats.avg_duration_seconds),
+          hint: "Per call, mm:ss",
+        },
+      ]
+    : [];
 
   return (
     <main className="container">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div>
-          <h1>Dashboard Overview</h1>
-          <p className="sub">Real-time metrics and qualification performance for outbound RO calls.</p>
-        </div>
-        <Link href="/contacts" className="btn">+ Start Call</Link>
-      </div>
+      <PageHeader
+        title="Overview"
+        subtitle="Qualification performance for your outbound calls."
+        action={
+          <Link href="/contacts" className="btn">
+            <IconPhone size={15} />
+            Start a call
+          </Link>
+        }
+      />
 
-      {loading && (
+      {loading ? <SkeletonCards count={6} /> : null}
+
+      {!loading && error ? (
         <div className="card">
-          <p className="sub">Loading performance metrics…</p>
+          <Alert tone="danger">{error}</Alert>
+          <Button variant="secondary" onClick={load}>
+            Retry
+          </Button>
         </div>
-      )}
+      ) : null}
 
-      {error && !loading && (
-        <div className="card">
-          <div className="error">{error}</div>
-        </div>
-      )}
-
-      {!loading && !error && !stats && (
-        <div className="card">
-          <p className="sub">No statistics available.</p>
-        </div>
-      )}
-
-      {!loading && !error && stats && (
+      {!loading && !error && stats ? (
         <>
           <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-label">Total Calls</div>
-              <div className="stat-value">{stats.total_calls}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Completed</div>
-              <div className="stat-value" style={{ color: "var(--accent-2)" }}>{stats.completed_calls}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Failed / No Answer</div>
-              <div className="stat-value" style={{ color: "var(--danger)" }}>{stats.failed_calls}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Interested Leads</div>
-              <div className="stat-value" style={{ color: "#4ade80" }}>{stats.interested_leads}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Follow-ups Required</div>
-              <div className="stat-value" style={{ color: "var(--warning)" }}>{stats.followups_required}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Avg Duration (mm:ss)</div>
-              <div className="stat-value">{formatDuration(stats.avg_duration_seconds)}</div>
-            </div>
+            {STAT_DEFS.map((stat) => (
+              <StatCard key={stat.label} label={stat.label} value={stat.value} hint={stat.hint} />
+            ))}
           </div>
 
-          <div className="card" style={{ marginTop: 20 }}>
-            <h2>Quick Actions</h2>
-            <div style={{ display: "flex", gap: "12px", marginTop: "12px", flexWrap: "wrap" }}>
-              <Link href="/calls" className="btn secondary">View Call History & Transcripts</Link>
-              <Link href="/contacts" className="btn secondary">View Leads & Contacts</Link>
-            </div>
-          </div>
+          <Card
+            title="Recent calls"
+            actions={
+              <Link href="/calls" className="link-more">
+                View all
+              </Link>
+            }
+          >
+            {recent === null || recent.length === 0 ? (
+              <EmptyState
+                icon={<IconPhone size={20} />}
+                title="No calls yet"
+                description="Queue your first outbound call from the contacts page."
+                action={
+                  <Link href="/contacts" className="btn btn-secondary btn-sm">
+                    Go to contacts
+                  </Link>
+                }
+              />
+            ) : (
+              <div className="list-rows">
+                {recent.map((call) => (
+                  <Link key={call.id} href={`/calls/${call.id}`} className="list-row">
+                    <span className="cell-strong num">{call.phone_number}</span>
+                    <span className="row-meta">{formatDate(call.created_at)}</span>
+                    <span className="row-end">
+                      <span className="row-meta num">{formatDuration(call.duration_seconds)}</span>
+                      <Badge value={call.status} />
+                      <IconArrowRight size={14} aria-hidden="true" />
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
         </>
-      )}
+      ) : null}
+
+      {!loading && !error && !stats ? (
+        <div className="card">
+          <p className="card-sub">No statistics available yet.</p>
+          <Skeleton width="50%" height={14} />
+        </div>
+      ) : null}
     </main>
   );
 }

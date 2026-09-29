@@ -2,8 +2,8 @@ import "./globals.css";
 import Navbar from "../components/Navbar";
 
 export const metadata = {
-  title: "SERP Hawk — AI Calling Agent",
-  description: "AI-Powered Two-Way Outbound Calling Agent for Commercial RO Systems",
+  title: "Calling Agent — AI Outbound Calls",
+  description: "AI-powered two-way outbound calling agent for commercial RO systems",
 };
 
 export default function RootLayout({ children }) {

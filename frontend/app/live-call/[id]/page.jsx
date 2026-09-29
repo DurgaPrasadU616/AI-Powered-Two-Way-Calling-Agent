@@ -28,6 +28,9 @@ export default function LiveCallPage() {
   const [error, setError] = useState("");
   const [call, setCall] = useState(null);
   const [textInput, setTextInput] = useState("");
+  // Display-only state (mirrors the refs above so the UI re-renders)
+  const [ended, setEnded] = useState(false);
+  const [micBlocked, setMicBlocked] = useState(false);
 
   const wsRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -35,6 +38,7 @@ export default function LiveCallPage() {
   const endedRef = useRef(false);
   const speakingRef = useRef(false);
   const utteranceRef = useRef(null);
+  const transcriptRef = useRef(null);
 
   const addMessage = useCallback((speaker, text) => {
     setMessages((prev) => [...prev, { speaker, text }]);
@@ -109,6 +113,9 @@ export default function LiveCallPage() {
       }
     };
     recognition.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        setMicBlocked(true);
+      }
       if (wsRef.current?.readyState === WebSocket.OPEN && e.error !== "no-speech") {
         wsRef.current.send(JSON.stringify({ type: "stt_failure", detail: { error: e.error } }));
       }
@@ -164,6 +171,7 @@ export default function LiveCallPage() {
         case "call_status":
           setStatus(message.status);
           endedRef.current = true;
+          setEnded(true);
           stopSpeaking();
           break;
         case "error":
@@ -191,6 +199,12 @@ export default function LiveCallPage() {
     };
   }, [id, addMessage, speak, stopSpeaking]);
 
+  // keep the transcript pinned to the newest message
+  useEffect(() => {
+    const el = transcriptRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
   function toggleMic() {
     const next = !micOn;
     micOnRef.current = next;
@@ -213,6 +227,7 @@ export default function LiveCallPage() {
   function endCall() {
     wsRef.current?.send(JSON.stringify({ type: "end_call" }));
     endedRef.current = true;
+    setEnded(true);
     stopSpeaking();
     try {
       recognitionRef.current?.stop();
@@ -236,80 +251,158 @@ export default function LiveCallPage() {
 
   const connected = status === "live" || status === "in_progress";
 
-  return (
-    <main className="container">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div>
-          <h1>Live Outbound Call</h1>
-          <p className="sub">
-            {call ? `${call.phone_number} · ` : ""}
-            <span className="phase">{status}</span> · phase <span className="phase">{phase}</span>
-          </p>
-        </div>
-        {endedRef.current || status === "completed" || status === "disconnected" ? (
-          <Link href={`/calls/${id}`} className="btn">
-            View Call Summary & intelligence →
-          </Link>
-        ) : null}
-      </div>
+  // Display state only — the logic above still reads from the refs.
+  let statusLabel = "Connecting";
+  let ringClass = "is-connecting";
+  if (ended || status === "completed" || status === "disconnected" || status === "failed") {
+    statusLabel = "Call ended";
+    ringClass = "is-ended";
+  } else if (status === "closed") {
+    statusLabel = "Disconnected";
+    ringClass = "is-ended";
+  } else if (agentSpeaking) {
+    statusLabel = "Agent speaking";
+    ringClass = "is-speaking";
+  } else if (connected) {
+    statusLabel = micOn ? "Listening" : "Mic muted";
+    ringClass = micOn ? "is-listening" : "";
+  }
 
-      <div className="card">
-        <div className="statusbar">
-          <span className={`dot ${connected ? "live" : ""}`} />
-          <span>{connected ? "connected" : status}</span>
-          <span className={`dot ${agentSpeaking ? "speaking" : ""}`} />
-          <span>{agentSpeaking ? "agent speaking…" : "agent idle"}</span>
-          <span className={`dot ${micOn ? "live" : ""}`} />
-          <span>{micOn ? "mic on" : "mic muted"}</span>
-          <div className="controls" style={{ marginLeft: "auto" }}>
-            <button className="secondary" style={{ marginTop: 0 }} onClick={toggleMic} disabled={endedRef.current}>
-              {micOn ? "Mute Mic" : "Unmute Mic"}
+  const filledCount = Object.values(slots).filter(Boolean).length;
+
+  return (
+    <main className="live-page">
+      <section className="card live-status-card" aria-live="polite">
+        <div className="live-status">
+          <span className={`live-ring ${ringClass}`} aria-hidden="true" />
+          {statusLabel}
+        </div>
+        <p className="live-status-meta">
+          {call ? `${call.phone_number} · ` : ""}
+          phase {phase} · {filledCount}/{SLOT_LABELS.length} details captured
+        </p>
+
+        <div className="live-controls">
+          <div>
+            <button
+              type="button"
+              className={`mic-btn ${micOn && !ended ? "is-live" : "is-muted"}`}
+              onClick={toggleMic}
+              disabled={ended}
+              aria-pressed={micOn}
+              aria-label={micOn ? "Mute microphone" : "Unmute microphone"}
+            >
+              {micOn ? (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
+                  <path d="M5 11a7 7 0 0 0 14 0" />
+                  <path d="M12 18v3" />
+                </svg>
+              ) : (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M15 9.34V6a3 3 0 0 0-5.68-1.33" />
+                  <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+                  <path d="M5 11a7 7 0 0 0 10.06 6.27" />
+                  <path d="M19 11a7 7 0 0 1-.4 2.27" />
+                  <path d="M12 18v3" />
+                  <path d="M1 1l22 22" />
+                </svg>
+              )}
             </button>
-            <button className="danger" style={{ marginTop: 0 }} onClick={endCall} disabled={endedRef.current}>
-              End Call
+            <p className="mic-caption">{micOn ? "Listening" : "Muted"}</p>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={endCall}
+              disabled={ended}
+              style={{ minWidth: 140, minHeight: 48 }}
+            >
+              End call
             </button>
+            <p className="mic-caption">
+              {ended ? (
+                <Link href={`/calls/${id}`}>View call summary →</Link>
+              ) : (
+                "Hangs up and saves the summary"
+              )}
+            </p>
           </div>
         </div>
-        {error ? <div className="error">{error}</div> : null}
-      </div>
 
-      <div className="card">
-        <strong>Live Extracted Qualification Slots</strong>
-        <div className="slots">
+        <p className="live-hint">Use Chrome and allow microphone access — or type below.</p>
+      </section>
+
+      {error ? (
+        <div className="alert alert-danger" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {micBlocked ? (
+        <div className="alert alert-warning" role="alert">
+          Microphone access is blocked. Allow it in your browser address bar, or type your replies
+          below.
+        </div>
+      ) : null}
+
+      <section className="card" aria-label="Collected details">
+        <div className="card-head">
+          <h2 className="card-title">Captured so far</h2>
+          <span className="cell-muted num" style={{ fontSize: 13 }}>
+            {filledCount}/{SLOT_LABELS.length}
+          </span>
+        </div>
+        <div className="chips">
           {SLOT_LABELS.map(([key, label]) => (
-            <div key={key} className={`slot ${slots[key] ? "filled" : ""}`}>
+            <span key={key} className={`chip ${slots[key] ? "is-filled" : ""}`} title={slots[key] || undefined}>
               <b>{label}</b>
-              {slots[key] || "—"}
-            </div>
+              <span className="chip-val">{slots[key] || "—"}</span>
+            </span>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className="card">
-        <strong>Live Transcript & Conversation</strong>
-        <div className="transcript" style={{ marginTop: 10 }}>
-          {messages.length === 0 ? <span className="sub">Waiting for the agent…</span> : null}
-          {messages.map((m, index) => (
-            <div key={index} className={`msg ${m.speaker}`}>
-              <span className="speaker">{m.speaker}</span>
-              {m.text}
-            </div>
-          ))}
+      <section className="card" aria-label="Live transcript">
+        <div className="card-head">
+          <h2 className="card-title">Transcript</h2>
+          <span className="cell-muted" style={{ fontSize: 13 }}>
+            {messages.length} messages
+          </span>
         </div>
 
-        {/* Text chat backup for mic-free testing */}
-        <form onSubmit={handleSendText} style={{ display: "flex", gap: "8px", marginTop: 14 }}>
+        <div className="live-transcript" ref={transcriptRef} aria-live="polite" aria-relevant="additions">
+          {messages.length === 0 ? (
+            <p className="card-sub" style={{ textAlign: "center", marginTop: 24 }}>
+              Waiting for the agent to pick up…
+            </p>
+          ) : (
+            messages.map((m, index) => (
+              <div key={index} className={`bubble bubble-${m.speaker}`}>
+                <div className="bubble-meta">
+                  <span className="bubble-speaker">{m.speaker}</span>
+                </div>
+                {m.text}
+              </div>
+            ))
+          )}
+        </div>
+
+        <form onSubmit={handleSendText} className="live-composer">
           <input
-            placeholder={endedRef.current ? "Call ended." : "Type a response (or speak into your mic)…"}
+            className="input"
+            placeholder={ended ? "Call ended" : "Type a reply instead of speaking…"}
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
-            disabled={endedRef.current}
+            disabled={ended}
+            aria-label="Type a reply"
           />
-          <button type="submit" style={{ marginTop: 0 }} disabled={endedRef.current || !textInput.trim()}>
+          <button type="submit" className="btn" disabled={ended || !textInput.trim()}>
             Send
           </button>
         </form>
-      </div>
+      </section>
     </main>
   );
 }
