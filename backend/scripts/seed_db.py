@@ -55,9 +55,9 @@ async def seed(session: AsyncSession) -> None:
             password_hash=hash_password(_ADMIN["password"]),
         )
         session.add(admin)
-        print(f"  ✓ Admin created: {_ADMIN['email']} (password from ADMIN_PASSWORD env)")
+        print(f"  [+] Admin created: {_ADMIN['email']} (password from ADMIN_PASSWORD env)")
     else:
-        print(f"  · Admin already exists: {_ADMIN['email']}")
+        print(f"  [=] Admin already exists: {_ADMIN['email']}")
 
     # Contacts
     for data in _CONTACTS:
@@ -67,9 +67,9 @@ async def seed(session: AsyncSession) -> None:
         if existing is None:
             contact = Contact(**data)
             session.add(contact)
-            print(f"  ✓ Contact created: {data['name']} ({data['phone_e164']})")
+            print(f"  [+] Contact created: {data['name']} ({data['phone_e164']})")
         else:
-            print(f"  · Contact already exists: {data['name']} ({data['phone_e164']})")
+            print(f"  [=] Contact already exists: {data['name']} ({data['phone_e164']})")
 
     await session.commit()
     print("\nSeeding complete.")
