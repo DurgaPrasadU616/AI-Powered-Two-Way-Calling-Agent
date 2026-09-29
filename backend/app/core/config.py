@@ -54,10 +54,12 @@ class Settings(BaseSettings):
     # ── CORS ───────────────────────────────────────────────────────────
     FRONTEND_ORIGIN: str = "http://localhost:3000"
 
-    # ── Twilio (optional, Phase 7) ─────────────────────────────────────
+    # ── Twilio (optional telephony provider) ───────────────────────────
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_PHONE_NUMBER: str = ""
+    TWILIO_FROM_NUMBER: str = ""
+    PUBLIC_BASE_URL: str = "http://localhost:8000"
 
     # ── Dev failure simulation (dev/demo: stt | llm | provider) ────────
     SIMULATE_FAILURE: str = ""

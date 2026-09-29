@@ -44,6 +44,34 @@ async def create_call(
     return call
 
 
+async def initiate_provider_call(session, call: Call) -> dict:
+    """Trigger the active CallProvider (browser: no-op metadata, twilio: outbound REST call)."""
+    from app.providers.base import get_call_provider
+
+    provider = get_call_provider()
+    if provider.name == "browser":
+        return {"provider": "browser", "call_id": str(call.id)}
+
+    try:
+        meta = await provider.start_call(str(call.id), call.phone_number)
+        if meta.get("call_sid"):
+            call.provider_call_sid = meta["call_sid"]
+        await session.flush()
+        return meta
+    except Exception as exc:
+        call.status = CallStatus.failed
+        call.outcome = CallOutcome.failed
+        session.add(
+            CallEvent(
+                call_id=call.id,
+                event_type="provider_error",
+                detail={"error": str(exc)},
+            )
+        )
+        await session.commit()
+        raise
+
+
 async def end_call(session, call: Call) -> Call:
     """Close a call: ``completed`` + end_time + duration (idempotent on end)."""
     if call.status != CallStatus.completed:

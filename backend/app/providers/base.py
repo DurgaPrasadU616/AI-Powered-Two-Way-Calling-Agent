@@ -93,8 +93,14 @@ _REGISTRY: dict[str, dict[str, type]] = {
 }
 
 
-def get_call_provider() -> CallProvider:
-    return _REGISTRY["call"][settings.CALL_PROVIDER]()
+def get_call_provider(name: str | None = None) -> CallProvider:
+    provider_name = name or settings.CALL_PROVIDER
+    if provider_name == "twilio":
+        from app.providers.twilio import TwilioCallProvider
+
+        return TwilioCallProvider()
+    provider_cls = _REGISTRY["call"].get(provider_name, BrowserCallProvider)
+    return provider_cls()
 
 
 def get_stt_provider() -> STTProvider:

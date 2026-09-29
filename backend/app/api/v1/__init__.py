@@ -2,12 +2,13 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, calls, contacts, dashboard
+from app.api.v1 import auth, calls, contacts, dashboard, webhooks
 
 api_router = APIRouter()
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(contacts.router, tags=["contacts"])
 api_router.include_router(calls.router, tags=["calls"])
 api_router.include_router(dashboard.router, tags=["dashboard"])
+api_router.include_router(webhooks.router, tags=["webhooks"])
 
 __all__ = ["api_router"]
