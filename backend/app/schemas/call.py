@@ -18,7 +18,18 @@ class CallCreate(BaseModel):
     whose stored number will be used."""
 
     phone_number: str | None = Field(default=None, max_length=20, examples=["+919876543210"])
-    contact_id: int | None = None
+    contact_id: int | None = Field(
+        default=None, examples=[1], description="ID of existing contact to call"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "contact_id": 1,
+                "phone_number": "+919876543210",
+            }
+        }
+    }
 
     @field_validator("phone_number")
     @classmethod

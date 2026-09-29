@@ -6,9 +6,6 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
-from httpx import AsyncClient
-from sqlalchemy import select
-
 from app.core.config import get_settings
 from app.db.models.call import Call
 from app.db.models.call_event import CallEvent
@@ -17,6 +14,8 @@ from app.db.models.call_turn import CallTurn
 from app.db.models.enums import CallOutcome, CallStatus
 from app.providers.twilio import TwilioCallProvider
 from app.services.call_service import create_call, initiate_provider_call
+from httpx import AsyncClient
+from sqlalchemy import select
 
 settings = get_settings()
 
@@ -74,7 +73,9 @@ async def test_twilio_provider_start_call_failure(db, monkeypatch):
         assert refreshed.status == CallStatus.failed
         assert refreshed.outcome == CallOutcome.failed
 
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         event_types = [e.event_type for e in events]
         assert "provider_error" in event_types
 
@@ -129,7 +130,9 @@ async def test_twilio_webhook_voice_greeting_and_turn(client: AsyncClient, db, m
 
     # Verify turn and extracted slots in DB
     async with db() as session:
-        turns = (await session.scalars(select(CallTurn).where(CallTurn.call_id == uuid.UUID(call_id)))).all()
+        turns = (
+            await session.scalars(select(CallTurn).where(CallTurn.call_id == uuid.UUID(call_id)))
+        ).all()
         assert len(turns) >= 2  # greeting + customer + agent
         extracted = await session.get(CallExtractedData, uuid.UUID(call_id))
         assert extracted is not None
@@ -168,5 +171,7 @@ async def test_twilio_webhook_status_mappings(client: AsyncClient, db, monkeypat
     async with db() as session:
         c = await session.get(Call, uuid.UUID(call_id))
         assert c.status == CallStatus.no_answer
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == uuid.UUID(call_id)))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == uuid.UUID(call_id)))
+        ).all()
         assert "no_answer" in [e.event_type for e in events]

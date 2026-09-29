@@ -47,9 +47,13 @@ class Settings(BaseSettings):
     TTS_PROVIDER: str = "browser"
     CALL_PROVIDER: str = "browser"
 
-    # ── Realtime call session (Phase 4) ───────────────────────────────
+    # ── Realtime call session & message bounds ─────────────────────────
     SILENCE_PROMPT_SECONDS: float = 7.0
     SILENCE_MAX_PROMPTS: int = 2
+    MAX_WS_MESSAGE_BYTES: int = 65536
+    MAX_CUSTOMER_SPEECH_LENGTH: int = 1000
+    MAX_CALL_DURATION_SECONDS: int = 1800
+    MAX_CALL_TURNS: int = 50
 
     # ── CORS ───────────────────────────────────────────────────────────
     FRONTEND_ORIGIN: str = "http://localhost:3000"

@@ -144,8 +144,13 @@ def _title_case_name(raw: str) -> str:
 class DialogueAgent:
     """Slot-filling conversational agent (audit D17 a–h)."""
 
-    def __init__(self, llm: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        llm: LLMClient | None = None,
+        extractor_llm: LLMClient | None = None,
+    ) -> None:
         self.llm = llm
+        self.extractor_llm = extractor_llm
         self.phase = Phase.GATHERING
         self.slots = SlotState()
         self.pending_slot: str | None = None
@@ -158,7 +163,8 @@ class DialogueAgent:
     def from_settings(cls) -> DialogueAgent:
         from app.agent.llm import get_llm
 
-        return cls(llm=get_llm())
+        client = get_llm()
+        return cls(llm=client, extractor_llm=client)
 
     @property
     def ended(self) -> bool:
@@ -217,10 +223,14 @@ class DialogueAgent:
                 self.slots.set("application", application)
 
         # Corrections to previously collected values ("actually 1000 LPH", "make it 1000 LPH")
-        if re.search(r"\b(actually|correction|change (?:that|it) to|instead of|make it)\b", text, re.I):
+        if re.search(
+            r"\b(actually|correction|change (?:that|it) to|instead of|make it)\b", text, re.I
+        ):
             cap_m = _CAPACITY_RE.search(text)
             if cap_m:
-                new_cap = _clean(cap_m.group(0)).upper().replace("LITRES", "LPH").replace("LITERS", "LPH")
+                new_cap = (
+                    _clean(cap_m.group(0)).upper().replace("LITRES", "LPH").replace("LITERS", "LPH")
+                )
                 self.slots.force_set("capacity", new_cap)
             name_m = _NAME_RE.search(text)
             if name_m:
@@ -228,11 +238,15 @@ class DialogueAgent:
 
     async def _run_llm_extraction(self, text: str) -> None:
         """Extract slots via LLM with strict JSON schema and merge into state."""
-        if self.llm is None or not self.llm.available or settings.SIMULATE_FAILURE == "llm":
+        if (
+            self.extractor_llm is None
+            or not self.extractor_llm.available
+            or settings.SIMULATE_FAILURE == "llm"
+        ):
             return
         from app.agent.extractor import extract_slots_llm
 
-        extracted = await extract_slots_llm(self.llm, text, self.slots.values)
+        extracted = await extract_slots_llm(self.extractor_llm, text, self.slots.values)
         if not extracted:
             return
         data = extracted.model_dump(exclude_none=True)

@@ -20,11 +20,23 @@ def validate_e164(value: str) -> str:
 
 
 class ContactBase(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=255, examples=["Rahul Kumar"])
     phone_e164: str = Field(min_length=1, max_length=20, examples=["+919876543210"])
-    company: str | None = Field(default=None, max_length=255)
-    purpose: str | None = None
-    product: str | None = Field(default=None, max_length=255)
+    company: str | None = Field(default=None, max_length=255, examples=["Hotel Blue Diamond"])
+    purpose: str | None = Field(default=None, examples=["Commercial RO inquiry"])
+    product: str | None = Field(default=None, max_length=255, examples=["Commercial RO 500 LPH"])
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "name": "Rahul Kumar",
+                "phone_e164": "+919876543210",
+                "company": "Hotel Blue Diamond",
+                "purpose": "Commercial RO inquiry",
+                "product": "Commercial RO 500 LPH",
+            }
+        }
+    }
 
     @field_validator("phone_e164")
     @classmethod

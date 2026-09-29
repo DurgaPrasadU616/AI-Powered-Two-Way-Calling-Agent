@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from twilio.request_validator import RequestValidator
-from twilio.twiml.voice_response import Gather, Hangup, Say, VoiceResponse
+from twilio.twiml.voice_response import Gather, VoiceResponse
 
-from app.agent.dialogue import DialogueAgent, Phase
+from app.agent.dialogue import DialogueAgent
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.models.call import Call
@@ -90,11 +89,17 @@ async def twilio_voice_webhook(
         # Initial turn: greeting
         contact = await session.get(Contact, call.contact_id) if call.contact_id else None
         greeting_target = f" {contact.name}" if contact and contact.name else ""
-        product_target = f" about {contact.product}" if contact and contact.product else " about water treatment systems"
+        product_target = (
+            f" about {contact.product}"
+            if contact and contact.product
+            else " about water treatment systems"
+        )
         greeting = f"Hello{greeting_target}, this is the assistant calling from SERP Hawk{product_target}. Is now a good time?"
 
         # Save turn
-        session.add(CallTurn(call_id=call.id, turn_index=0, speaker=Speaker.agent, message=greeting))
+        session.add(
+            CallTurn(call_id=call.id, turn_index=0, speaker=Speaker.agent, message=greeting)
+        )
         await session.commit()
 
         gather = Gather(input="speech", action=action_url, method="POST", speech_timeout="auto")
@@ -113,7 +118,9 @@ async def twilio_voice_webhook(
 
     # Load existing turns to sync state
     existing_turns = (
-        await session.scalars(select(CallTurn).where(CallTurn.call_id == call.id).order_by(CallTurn.turn_index))
+        await session.scalars(
+            select(CallTurn).where(CallTurn.call_id == call.id).order_by(CallTurn.turn_index)
+        )
     ).all()
     turn_idx = len(existing_turns)
 
@@ -121,8 +128,19 @@ async def twilio_voice_webhook(
     turn_output = await agent.handle(customer_text)
 
     # Save customer turn & agent reply turn
-    session.add(CallTurn(call_id=call.id, turn_index=turn_idx, speaker=Speaker.customer, message=customer_text))
-    session.add(CallTurn(call_id=call.id, turn_index=turn_idx + 1, speaker=Speaker.agent, message=turn_output.reply))
+    session.add(
+        CallTurn(
+            call_id=call.id, turn_index=turn_idx, speaker=Speaker.customer, message=customer_text
+        )
+    )
+    session.add(
+        CallTurn(
+            call_id=call.id,
+            turn_index=turn_idx + 1,
+            speaker=Speaker.agent,
+            message=turn_output.reply,
+        )
+    )
 
     # Upsert extracted slots
     extracted = await session.get(CallExtractedData, call.id)
@@ -147,7 +165,9 @@ async def twilio_voice_webhook(
         twiml.say(turn_output.reply, voice="Polly.Aditi", language="en-IN")
         twiml.hangup()
         call.status = CallStatus.completed
-        call.outcome = CallOutcome.not_interested if agent.not_interested else CallOutcome.interested
+        call.outcome = (
+            CallOutcome.not_interested if agent.not_interested else CallOutcome.interested
+        )
         session.add(CallEvent(call_id=call.id, event_type="call_ended"))
         await session.commit()
     else:
@@ -183,22 +203,46 @@ async def twilio_status_webhook(
     if twilio_status in ("ringing", "in-progress", "answered"):
         if call.status != CallStatus.in_progress:
             call.status = CallStatus.in_progress
-            session.add(CallEvent(call_id=call.id, event_type="call_started", detail={"twilio_status": twilio_status}))
+            session.add(
+                CallEvent(
+                    call_id=call.id,
+                    event_type="call_started",
+                    detail={"twilio_status": twilio_status},
+                )
+            )
     elif twilio_status in ("busy", "no-answer"):
         call.status = CallStatus.no_answer
         call.outcome = CallOutcome.no_response
-        session.add(CallEvent(call_id=call.id, event_type="no_answer", detail={"twilio_status": twilio_status}))
+        session.add(
+            CallEvent(
+                call_id=call.id, event_type="no_answer", detail={"twilio_status": twilio_status}
+            )
+        )
     elif twilio_status == "failed":
         call.status = CallStatus.failed
         call.outcome = CallOutcome.failed
-        session.add(CallEvent(call_id=call.id, event_type="provider_error", detail={"twilio_status": twilio_status}))
-    elif twilio_status in ("completed", "canceled"):
-        if call.status != CallStatus.completed:
-            call.status = CallStatus.completed
-            if duration and duration.isdigit():
-                call.duration_seconds = int(duration)
-            session.add(CallEvent(call_id=call.id, event_type="call_ended", detail={"twilio_status": twilio_status}))
+        session.add(
+            CallEvent(
+                call_id=call.id,
+                event_type="provider_error",
+                detail={"twilio_status": twilio_status},
+            )
+        )
+    elif twilio_status in ("completed", "canceled") and call.status != CallStatus.completed:
+        call.status = CallStatus.completed
+        if duration and duration.isdigit():
+            call.duration_seconds = int(duration)
+            session.add(
+                CallEvent(
+                    call_id=call.id,
+                    event_type="call_ended",
+                    detail={"twilio_status": twilio_status},
+                )
+            )
 
     await session.commit()
-    logger.info("Twilio status callback processed", extra={"call_id": call_id, "twilio_status": twilio_status})
+    logger.info(
+        "Twilio status callback processed",
+        extra={"call_id": call_id, "twilio_status": twilio_status},
+    )
     return {"status": "ok", "call_status": call.status.value}

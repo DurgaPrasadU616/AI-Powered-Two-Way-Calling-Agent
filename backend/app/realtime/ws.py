@@ -90,6 +90,10 @@ async def ws_call(websocket: WebSocket, call_id: str, token: str | None = None) 
 
         while True:
             raw = await websocket.receive_text()
+            if len(raw) > settings.MAX_WS_MESSAGE_BYTES:
+                await _error(websocket, "message too large")
+                continue
+
             try:
                 message = json.loads(raw)
                 if not isinstance(message, dict):
@@ -100,10 +104,11 @@ async def ws_call(websocket: WebSocket, call_id: str, token: str | None = None) 
 
             kind = message.get("type")
             if kind == "customer_speech":
-                text = str(message.get("text") or "").strip()
-                if not text:
+                raw_text = str(message.get("text") or "").strip()
+                if not raw_text:
                     await _error(websocket, "customer_speech requires non-empty text")
                     continue
+                text = raw_text[: settings.MAX_CUSTOMER_SPEECH_LENGTH]
                 confidence = message.get("confidence")
                 conf_val = float(confidence) if isinstance(confidence, (int, float)) else None
                 await session.on_customer_speech(text, conf_val)

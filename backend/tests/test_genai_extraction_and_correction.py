@@ -5,10 +5,13 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.agent.dialogue import DialogueAgent
 from app.agent.extractor import ExtractedSlots, extract_slots_llm
-from app.agent.prompts import DIALOGUE_SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, SUMMARY_SYSTEM_PROMPT
+from app.agent.prompts import (
+    DIALOGUE_SYSTEM_PROMPT,
+    EXTRACTION_SYSTEM_PROMPT,
+    SUMMARY_SYSTEM_PROMPT,
+)
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -59,15 +62,15 @@ async def test_slot_correction_updates_previously_filled_value():
     """Customer correcting a previous value ('actually make it 1000 LPH') overwrites the slot."""
     agent = DialogueAgent()
     # 1. Provide initial requirement
-    turn1 = await agent.handle("I need an RO system for my hotel")
+    await agent.handle("I need an RO system for my hotel")
     assert agent.slots.values["requirement"] == "an RO system for my hotel"
 
     # 2. Answer capacity with 500 LPH
-    turn2 = await agent.handle("500 LPH")
+    await agent.handle("500 LPH")
     assert agent.slots.values["capacity"] == "500 LPH"
 
     # 3. Correct capacity to 1000 LPH
-    turn3 = await agent.handle("Actually make it 1000 LPH")
+    await agent.handle("Actually make it 1000 LPH")
     assert agent.slots.values["capacity"] == "1000 LPH"
 
 
@@ -80,7 +83,11 @@ async def test_customer_question_answers_and_returns_to_missing_slot():
 
     turn = await agent.handle("What is the price?")
     # Contains price explanation
-    assert "pricing" in turn.reply.lower() or "quote" in turn.reply.lower() or "fair question" in turn.reply.lower()
+    assert (
+        "pricing" in turn.reply.lower()
+        or "quote" in turn.reply.lower()
+        or "fair question" in turn.reply.lower()
+    )
     # Still directs customer to capacity
     assert "capacity" in turn.reply.lower() or "what capacity" in turn.reply.lower()
     assert agent.pending_slot == "capacity"

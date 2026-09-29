@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -56,8 +55,13 @@ async def extract_slots_llm(
             timeout=2.0,
         )
         validated = ExtractedSlots.model_validate(data)
-        logger.debug("LLM slot extraction successful", extra={"extracted": validated.model_dump(exclude_none=True)})
+        logger.debug(
+            "LLM slot extraction successful",
+            extra={"extracted": validated.model_dump(exclude_none=True)},
+        )
         return validated
-    except (asyncio.TimeoutError, LLMError, Exception) as exc:
-        logger.debug("LLM slot extraction skipped or failed, using rule fallback", extra={"error": str(exc)})
+    except (TimeoutError, LLMError, Exception) as exc:
+        logger.debug(
+            "LLM slot extraction skipped or failed, using rule fallback", extra={"error": str(exc)}
+        )
         return None

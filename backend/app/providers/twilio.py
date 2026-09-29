@@ -30,7 +30,9 @@ class TwilioCallProvider(CallProvider):
     ) -> None:
         self.account_sid = account_sid or settings.TWILIO_ACCOUNT_SID
         self.auth_token = auth_token or settings.TWILIO_AUTH_TOKEN
-        self.from_number = from_number or settings.TWILIO_FROM_NUMBER or settings.TWILIO_PHONE_NUMBER
+        self.from_number = (
+            from_number or settings.TWILIO_FROM_NUMBER or settings.TWILIO_PHONE_NUMBER
+        )
         self.public_base_url = (public_base_url or settings.PUBLIC_BASE_URL).rstrip("/")
         self._client: Any = None
 
@@ -39,7 +41,9 @@ class TwilioCallProvider(CallProvider):
             from twilio.rest import Client
 
             if not self.account_sid or not self.auth_token:
-                raise RuntimeError("Twilio credentials not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN)")
+                raise RuntimeError(
+                    "Twilio credentials not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN)"
+                )
             self._client = Client(self.account_sid, self.auth_token)
         return self._client
 
@@ -73,7 +77,9 @@ class TwilioCallProvider(CallProvider):
                 "status": getattr(call, "status", "queued"),
             }
         except Exception as exc:
-            logger.error("Failed to start Twilio call", extra={"call_id": call_id, "error": str(exc)})
+            logger.error(
+                "Failed to start Twilio call", extra={"call_id": call_id, "error": str(exc)}
+            )
             raise
 
     async def end(self, call_id: str) -> dict[str, Any]:
@@ -83,7 +89,9 @@ class TwilioCallProvider(CallProvider):
     async def hangup(self, call_id: str, call_sid: str | None = None) -> dict[str, Any]:
         """Hangup an in-progress Twilio call."""
         if not call_sid:
-            logger.info("Twilio hangup called without sid; treating as ended", extra={"call_id": call_id})
+            logger.info(
+                "Twilio hangup called without sid; treating as ended", extra={"call_id": call_id}
+            )
             return {"provider": self.name, "call_id": call_id, "ended": True}
 
         def _hangup():

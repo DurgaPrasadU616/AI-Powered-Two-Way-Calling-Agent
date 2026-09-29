@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.config import get_settings
 from app.db.models.admin import Admin
 from app.db.models.enums import CallOutcome, CallStatus, LeadStatus
 from app.db.session import get_db
@@ -34,13 +35,11 @@ async def create_call(
         call = await call_service.create_call(
             session, phone_number=payload.phone_number, contact_id=payload.contact_id
         )
-        from app.core.config import get_settings
+        import contextlib
 
         if get_settings().CALL_PROVIDER == "twilio":
-            try:
+            with contextlib.suppress(Exception):
                 await call_service.initiate_provider_call(session, call)
-            except Exception:
-                pass  # call.status transitioned to failed and provider_error event recorded
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except LookupError as exc:

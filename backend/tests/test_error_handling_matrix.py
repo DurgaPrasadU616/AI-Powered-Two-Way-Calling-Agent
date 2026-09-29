@@ -5,19 +5,17 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient
-from sqlalchemy import select
-from starlette.testclient import TestClient
-
 from app.core.config import get_settings
 from app.core.security import create_access_token
 from app.db.models.call import Call
 from app.db.models.call_event import CallEvent
 from app.db.models.enums import CallOutcome, CallStatus, LeadStatus
 from app.main import app
+from httpx import AsyncClient
+from sqlalchemy import select
+from starlette.testclient import TestClient
 
 settings = get_settings()
 _TOKEN = create_access_token("admin@sephawk.com")
@@ -53,7 +51,9 @@ async def test_case_1_no_answer(client: AsyncClient, db, monkeypatch):
         call = await session.get(Call, call_id)
         assert call.status == CallStatus.no_answer
         assert call.outcome == CallOutcome.no_response
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         assert "no_answer" in [e.event_type for e in events]
 
 
@@ -73,7 +73,9 @@ async def test_case_2_disconnect(db):
     async with db() as session:
         call = await session.get(Call, call_id)
         assert call.status == CallStatus.disconnected
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         assert "disconnected" in [e.event_type for e in events]
 
 
@@ -95,8 +97,9 @@ async def test_case_3_stt_failure(db):
         assert reply["type"] == "agent_reply"
 
     async with db() as session:
-        call = await session.get(Call, call_id)
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         assert "stt_failure" in [e.event_type for e in events]
 
 
@@ -118,7 +121,9 @@ async def test_case_4_llm_failure(db, monkeypatch):
         assert len(reply["text"]) > 0
 
     async with db() as session:
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         assert "llm_failure" in [e.event_type for e in events]
 
 
@@ -137,7 +142,9 @@ async def test_case_5_invalid_phone(client: AsyncClient, db):
     async with db() as session:
         call = await session.get(Call, call_id)
         assert call.status == CallStatus.invalid_number
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         assert "invalid_number" in [e.event_type for e in events]
 
 
@@ -155,7 +162,9 @@ async def test_case_6_provider_failure(db, monkeypatch):
         assert msg["type"] == "error"
 
     async with db() as session:
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         assert "provider_error" in [e.event_type for e in events]
 
 
@@ -186,7 +195,9 @@ async def test_case_7_silence_timeout(db):
     async with db() as session:
         call = await session.get(Call, call_id)
         assert call.status == CallStatus.completed
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         assert "silence_timeout" in [e.event_type for e in events]
 
 
@@ -208,5 +219,7 @@ async def test_case_8_interruption(db):
         assert reply["type"] == "agent_reply"
 
     async with db() as session:
-        events = (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
+        events = (
+            await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))
+        ).all()
         assert "interrupted" in [e.event_type for e in events]
