@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     LLM_PROVIDER: str = "gemini"
     LLM_MODEL: str = "gemini-2.5-flash"
+    LLM_MAX_RETRIES: int = 2
 
     # ── STT / TTS / Calling ────────────────────────────────────────────
     STT_PROVIDER: str = "browser"
