@@ -13,8 +13,9 @@ An autonomous, full-stack outbound sales qualification system for commercial and
 
 ## Demo & Screenshots
 
-<!-- Replace DEMO_VIDEO_ID with your YouTube / Loom video ID -->
-[![Watch Demo Video](https://img.youtube.com/vi/DEMO_VIDEO_ID/maxresdefault.jpg)](https://youtube.com/watch?v=DEMO_VIDEO_ID)
+[![Watch Demo Video](https://img.shields.io/badge/Demo%20Video-Google%20Drive-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1KCU3uwiXzcL6h1dLKk-zyLvj-1V9Gt1n/view?usp=sharing)
+
+> 📹 **Live Demonstration Video:** [Watch on Google Drive](https://drive.google.com/file/d/1KCU3uwiXzcL6h1dLKk-zyLvj-1V9Gt1n/view?usp=sharing)
 
 | Admin Dashboard | Login Portal |
 | :---: | :---: |
