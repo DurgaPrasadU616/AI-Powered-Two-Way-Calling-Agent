@@ -12,7 +12,9 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.security import decode_access_token
 from app.db.models.call import Call
+from app.db.models.call_event import CallEvent
 from app.db.models.enums import CallStatus
 from app.realtime.call_session import CallSession
 
@@ -35,13 +37,22 @@ async def _error(websocket: WebSocket, detail: str) -> None:
 
 
 @router.websocket("/ws/call/{call_id}")
-async def ws_call(websocket: WebSocket, call_id: str) -> None:
+async def ws_call(websocket: WebSocket, call_id: str, token: str | None = None) -> None:
     """One live call: handshake → opening line → dialogue loop → finish.
 
     Message contract: client→server ``customer_speech`` / ``interrupt`` /
     ``end_call``; server→client ``agent_reply`` / ``state_update`` /
     ``call_status`` / ``error``.
     """
+    if not token:
+        await websocket.close(code=1008)
+        return
+    try:
+        decode_access_token(token)
+    except Exception:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
     try:
         call_uuid = uuid.UUID(call_id)
@@ -101,6 +112,16 @@ async def ws_call(websocket: WebSocket, call_id: str) -> None:
             elif kind == "end_call":
                 await session.on_end_call()
                 break
+            elif kind == "stt_failure":
+                async with factory() as db:
+                    db.add(
+                        CallEvent(
+                            call_id=call_uuid,
+                            event_type="stt_failure",
+                            detail=message.get("detail"),
+                        )
+                    )
+                    await db.commit()
             else:
                 await _error(websocket, f"unknown message type: {kind!r}")
 
@@ -108,8 +129,18 @@ async def ws_call(websocket: WebSocket, call_id: str) -> None:
             await websocket.close()
     except WebSocketDisconnect:
         pass
-    except Exception:
+    except Exception as exc:
         logger.exception("WS call crashed", extra={"call_id": call_id})
+        with suppress(Exception):
+            async with factory() as db:
+                db.add(
+                    CallEvent(
+                        call_id=call_uuid,
+                        event_type="provider_error",
+                        detail={"error": str(exc)},
+                    )
+                )
+                await db.commit()
         with suppress(Exception):
             await _error(websocket, "internal error")
     finally:

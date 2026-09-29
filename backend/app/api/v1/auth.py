@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +30,10 @@ async def login(
     session: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     admin = await session.scalar(select(Admin).where(Admin.email == credentials.email))
-    if admin is None or not verify_password(credentials.password, admin.password_hash):
+    if admin is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    valid = await asyncio.to_thread(verify_password, credentials.password, admin.password_hash)
+    if not valid:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token(admin.email)
     return TokenResponse(

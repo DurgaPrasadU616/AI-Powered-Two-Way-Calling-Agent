@@ -73,6 +73,7 @@ class CallSession:
         self._turn_index = -1
         self._speech = asyncio.Event()
         self._silence_task: asyncio.Task | None = None
+        self._lock = asyncio.Lock()
 
     # ── outbound helpers ────────────────────────────────────────────────────
     async def _emit(self, message: dict[str, Any]) -> None:
@@ -129,17 +130,30 @@ class CallSession:
             return
         self._speech.set()
         turn = await self.agent.handle(text)
-        async with self.session_factory() as db:
-            await self._save_turn(db, Speaker.customer, text, confidence)
-            await self._save_turn(db, Speaker.agent, turn.reply, None)
-            await self._upsert_extracted(db)
-            await db.commit()
+        async with self._lock:
+            if self.closed:
+                return
+            async with self.session_factory() as db:
+                if turn.extra.get("llm_error"):
+                    db.add(
+                        CallEvent(
+                            call_id=self.call_id,
+                            event_type="llm_failure",
+                            detail={"error": turn.extra["llm_error"]},
+                        )
+                    )
+                await self._save_turn(db, Speaker.customer, text, confidence)
+                await self._save_turn(db, Speaker.agent, turn.reply, None)
+                await self._upsert_extracted(db)
+                await db.commit()
 
-        await self._emit(
-            {"type": "agent_reply", "text": turn.reply, "turn_index": self._turn_index}
-        )
-        await self._emit_state()
-        if self.agent.ended:
+            await self._emit(
+                {"type": "agent_reply", "text": turn.reply, "turn_index": self._turn_index}
+            )
+            await self._emit_state()
+            should_finish = self.agent.ended
+
+        if should_finish:
             await self.finish("completed")
 
     async def on_interrupt(self) -> None:
@@ -168,52 +182,53 @@ class CallSession:
 
     async def finish(self, reason: str) -> None:
         """End the call once: status/end_time/duration/event + summary."""
-        if self.finished:
-            return
-        self.finished = True
-        self.closed = True
-        task = self._silence_task
-        self._silence_task = None
-        if task is not None and task is not asyncio.current_task():
-            task.cancel()  # never cancel ourselves (finish may run inside it)
+        async with self._lock:
+            if self.finished:
+                return
+            self.finished = True
+            self.closed = True
+            task = self._silence_task
+            self._silence_task = None
+            if task is not None and task is not asyncio.current_task():
+                task.cancel()  # never cancel ourselves (finish may run inside it)
 
-        status, event_type = _END_STATES[reason]
-        async with self.session_factory() as db:
-            call = await call_service.get_call(db, self.call_id)
-            if call is not None:
-                now = datetime.now(tz=UTC)
-                call.end_time = now
-                anchor = call.start_time or call.created_at
-                if anchor is not None:
-                    if anchor.tzinfo is None:
-                        anchor = anchor.replace(tzinfo=UTC)
-                    call.duration_seconds = max(0, int((now - anchor).total_seconds()))
-                call.status = status
-                db.add(CallEvent(call_id=self.call_id, event_type=event_type))
-                await summary_service.generate_and_store_summary(
-                    db, self.call_id, not_interested=self.agent.not_interested
-                )
-                await db.commit()
-                duration = call.duration_seconds
-            else:  # pragma: no cover - call vanished mid-flight
-                duration = None
-            if not self.agent.ended:
-                # disconnected/timeout mid-conversation: persist what we have
-                await self._upsert_extracted(db)
-                await db.commit()
+            status, event_type = _END_STATES[reason]
+            async with self.session_factory() as db:
+                call = await call_service.get_call(db, self.call_id)
+                if call is not None:
+                    now = datetime.now(tz=UTC)
+                    call.end_time = now
+                    anchor = call.start_time or call.created_at
+                    if anchor is not None:
+                        if anchor.tzinfo is None:
+                            anchor = anchor.replace(tzinfo=UTC)
+                        call.duration_seconds = max(0, int((now - anchor).total_seconds()))
+                    call.status = status
+                    db.add(CallEvent(call_id=self.call_id, event_type=event_type))
+                    await summary_service.generate_and_store_summary(
+                        db, self.call_id, not_interested=self.agent.not_interested
+                    )
+                    await db.commit()
+                    duration = call.duration_seconds
+                else:  # pragma: no cover - call vanished mid-flight
+                    duration = None
+                if not self.agent.ended:
+                    # disconnected/timeout mid-conversation: persist what we have
+                    await self._upsert_extracted(db)
+                    await db.commit()
 
-        await self._emit(
-            {
-                "type": "call_status",
-                "status": status.value,
-                "reason": reason,
-                "duration_seconds": duration,
-            }
-        )
-        logger.info(
-            "Call session finished",
-            extra={"call_id": str(self.call_id), "reason": reason, "status": status.value},
-        )
+            await self._emit(
+                {
+                    "type": "call_status",
+                    "status": status.value,
+                    "reason": reason,
+                    "duration_seconds": duration,
+                }
+            )
+            logger.info(
+                "Call session finished",
+                extra={"call_id": str(self.call_id), "reason": reason, "status": status.value},
+            )
 
     # ── silence handling ────────────────────────────────────────────────────
     async def _silence_loop(self) -> None:
@@ -233,10 +248,15 @@ class CallSession:
             await self._save_and_send_nudge()
 
     async def _save_and_send_nudge(self) -> None:
-        async with self.session_factory() as db:
-            await self._save_turn(db, Speaker.agent, _NUDGE, None)
-            await db.commit()
-        await self._emit({"type": "agent_reply", "text": _NUDGE, "turn_index": self._turn_index})
+        async with self._lock:
+            if self.closed:
+                return
+            async with self.session_factory() as db:
+                await self._save_turn(db, Speaker.agent, _NUDGE, None)
+                await db.commit()
+            await self._emit(
+                {"type": "agent_reply", "text": _NUDGE, "turn_index": self._turn_index}
+            )
 
     # ── persistence ─────────────────────────────────────────────────────────
     async def _save_turn(

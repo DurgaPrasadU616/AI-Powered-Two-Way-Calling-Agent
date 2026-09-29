@@ -11,6 +11,8 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
+import pytest
+from app.core.security import create_access_token
 from app.db.models.call import Call
 from app.db.models.call_event import CallEvent
 from app.db.models.call_extracted_data import CallExtractedData
@@ -21,6 +23,9 @@ from app.main import app
 from app.realtime import call_session as call_session_module
 from sqlalchemy import select
 from starlette.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+
+_TOKEN = create_access_token("admin@sephawk.com")
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -76,7 +81,10 @@ async def test_ws_full_conversation_persists_everything(db, monkeypatch) -> None
     call_id = await _make_call(db)
     fake = _install_fake_llm(monkeypatch)
 
-    with TestClient(app) as http, http.websocket_connect(f"/ws/call/{call_id}") as ws:
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws,
+    ):
         opening = ws.receive_json()
         assert opening["type"] == "agent_reply"
         assert "Hello, this is the assistant calling from SERP Hawk" in opening["text"]
@@ -150,7 +158,10 @@ async def test_ws_end_call_sends_status(db, monkeypatch) -> None:
     call_id = await _make_call(db)
     _install_fake_llm(monkeypatch, replies=["Sure, what are you looking for?"])
 
-    with TestClient(app) as http, http.websocket_connect(f"/ws/call/{call_id}") as ws:
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws,
+    ):
         ws.receive_json()  # agent_reply opening
         ws.receive_json()  # state_update
         ws.send_json({"type": "end_call"})
@@ -176,7 +187,7 @@ async def test_ws_disconnect_marks_disconnected_with_summary(db, monkeypatch) ->
     _install_fake_llm(monkeypatch, replies=["Sure, what are you looking for?"])
 
     with TestClient(app) as http:
-        with http.websocket_connect(f"/ws/call/{call_id}") as ws:
+        with http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws:
             ws.receive_json()
             ws.receive_json()
             ws.send_json({"type": "customer_speech", "text": "I need an RO plant"})
@@ -244,13 +255,19 @@ async def test_silence_prompts_then_times_out(db) -> None:
 # ── guard rails ────────────────────────────────────────────────────────────────
 async def test_ws_unknown_call_returns_error(db) -> None:
     missing = uuid.uuid4()
-    with TestClient(app) as http, http.websocket_connect(f"/ws/call/{missing}") as ws:
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/{missing}?token={_TOKEN}") as ws,
+    ):
         message = ws.receive_json()
         assert message == {"type": "error", "detail": "call not found"}
 
 
 async def test_ws_invalid_call_id_returns_error(db) -> None:
-    with TestClient(app) as http, http.websocket_connect("/ws/call/not-a-uuid") as ws:
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/not-a-uuid?token={_TOKEN}") as ws,
+    ):
         message = ws.receive_json()
         assert message == {"type": "error", "detail": "invalid call id"}
 
@@ -258,7 +275,10 @@ async def test_ws_invalid_call_id_returns_error(db) -> None:
 async def test_ws_unknown_message_type_returns_error(db, monkeypatch) -> None:
     call_id = await _make_call(db)
     _install_fake_llm(monkeypatch, replies=["Sure, what are you looking for?"])
-    with TestClient(app) as http, http.websocket_connect(f"/ws/call/{call_id}") as ws:
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws,
+    ):
         ws.receive_json()
         ws.receive_json()
         ws.send_json({"type": "teleport"})
@@ -271,12 +291,45 @@ async def test_ws_cannot_reopen_finished_call(db, monkeypatch) -> None:
     call_id = await _make_call(db)
     _install_fake_llm(monkeypatch)
     with TestClient(app) as http:
-        with http.websocket_connect(f"/ws/call/{call_id}") as ws:
+        with http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws:
             ws.receive_json()
             ws.receive_json()
             ws.send_json({"type": "end_call"})
             ws.receive_json()
         # second connection after the call ended
-        with http.websocket_connect(f"/ws/call/{call_id}") as ws2:
+        with http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws2:
             message = ws2.receive_json()
             assert message == {"type": "error", "detail": "call already ended"}
+
+
+# ── WebSocket authentication tests ─────────────────────────────────────────────
+async def test_ws_auth_rejected_without_token(db) -> None:
+    call_id = await _make_call(db)
+    with (
+        TestClient(app) as http,
+        pytest.raises(WebSocketDisconnect) as exc_info,
+        http.websocket_connect(f"/ws/call/{call_id}"),
+    ):
+        pass
+    assert exc_info.value.code == 1008
+
+
+async def test_ws_auth_rejected_with_invalid_token(db) -> None:
+    call_id = await _make_call(db)
+    with (
+        TestClient(app) as http,
+        pytest.raises(WebSocketDisconnect) as exc_info,
+        http.websocket_connect(f"/ws/call/{call_id}?token=invalid.jwt.token"),
+    ):
+        pass
+    assert exc_info.value.code == 1008
+
+
+async def test_ws_auth_accepted_with_valid_token(db) -> None:
+    call_id = await _make_call(db)
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws,
+    ):
+        opening = ws.receive_json()
+        assert opening["type"] == "agent_reply"
