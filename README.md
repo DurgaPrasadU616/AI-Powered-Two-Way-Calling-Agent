@@ -16,9 +16,9 @@ An autonomous, full-stack outbound sales qualification system for commercial and
 <!-- Replace DEMO_VIDEO_ID with your YouTube / Loom video ID -->
 [![Watch Demo Video](https://img.youtube.com/vi/DEMO_VIDEO_ID/maxresdefault.jpg)](https://youtube.com/watch?v=DEMO_VIDEO_ID)
 
-| Admin Dashboard | Live Call Interface |
+| Admin Dashboard | Login Portal |
 | :---: | :---: |
-| ![Dashboard Screenshot](https://raw.githubusercontent.com/DurgaPrasadU616/AI-Powered-Two-Way-Calling-Agent/main/docs/dashboard.png) | ![Live Call Screenshot](https://raw.githubusercontent.com/DurgaPrasadU616/AI-Powered-Two-Way-Calling-Agent/main/docs/live-call.png) |
+| ![Dashboard Screenshot](docs/dashboard.png) | ![Login Screenshot](docs/login.png) |
 
 ---
 

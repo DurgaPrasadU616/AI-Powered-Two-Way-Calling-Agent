@@ -26,6 +26,7 @@ export default function LiveCallPage() {
   const [agentSpeaking, setAgentSpeaking] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [error, setError] = useState("");
+  const [interimText, setInterimText] = useState("");
   const [call, setCall] = useState(null);
   const [textInput, setTextInput] = useState("");
 
@@ -73,51 +74,93 @@ export default function LiveCallPage() {
   useEffect(() => {
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) {
-      setError("Web SpeechRecognition is not supported in this browser (use Chrome). Text chat fallback is available below.");
+      setError("Web SpeechRecognition is not supported in this browser (use Google Chrome). You can type in the box below to chat.");
       return undefined;
     }
     const recognition = new Recognition();
     recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = "en-IN";
+    recognition.interimResults = true;
+    recognition.lang = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
 
     recognition.onresult = (event) => {
       if (!micOnRef.current || endedRef.current) return;
+      let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
-        if (!result.isFinal) continue;
-        const text = result[0].transcript.trim();
-        if (!text) continue;
-        // barge-in: customer starts talking while the agent speaks
+        if (result.isFinal) {
+          const text = result[0].transcript.trim();
+          if (!text) continue;
+          setInterimText("");
+          // barge-in: customer starts talking while the agent speaks
+          if (speakingRef.current) {
+            stopSpeaking();
+            wsRef.current?.send(JSON.stringify({ type: "interrupt" }));
+          }
+          addMessage("customer", text);
+          wsRef.current?.send(
+            JSON.stringify({ type: "customer_speech", text, confidence: result[0].confidence ?? null })
+          );
+        } else {
+          interim += result[0].transcript;
+        }
+      }
+      if (interim) {
+        setInterimText(interim);
         if (speakingRef.current) {
           stopSpeaking();
           wsRef.current?.send(JSON.stringify({ type: "interrupt" }));
         }
-        addMessage("customer", text);
-        wsRef.current?.send(
-          JSON.stringify({ type: "customer_speech", text, confidence: result[0].confidence ?? null })
-        );
       }
     };
+
     recognition.onend = () => {
+      setInterimText("");
       if (micOnRef.current && !endedRef.current) {
-        try {
-          recognition.start();
-        } catch {
-          /* already running */
-        }
+        setTimeout(() => {
+          if (micOnRef.current && !endedRef.current) {
+            try {
+              recognition.start();
+            } catch {
+              /* already running */
+            }
+          }
+        }, 150);
       }
     };
+
     recognition.onerror = (e) => {
+      console.warn("Speech recognition error:", e.error);
+      if (e.error === "not-allowed") {
+        setError("Microphone access was denied. Please allow microphone permissions in Chrome (click the lock icon in the address bar) and click the microphone button.");
+        setMicOn(false);
+        micOnRef.current = false;
+      } else if (e.error === "audio-capture") {
+        setError("No microphone detected. Please check that your microphone is plugged in and selected in system settings.");
+      } else if (e.error === "network") {
+        setError("Chrome speech recognition network error. Please check your internet connection or use the text box below.");
+      }
       if (wsRef.current?.readyState === WebSocket.OPEN && e.error !== "no-speech") {
         wsRef.current.send(JSON.stringify({ type: "stt_failure", detail: { error: e.error } }));
       }
     };
-    try {
-      recognition.start();
-    } catch {
-      /* ignore */
+
+    if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+          try {
+            recognition.start();
+          } catch {}
+        })
+        .catch((err) => {
+          console.warn("Microphone permission prompt error:", err);
+          setError("Microphone permission needed: Please click 'Allow' when prompted or click the lock icon in Chrome to enable the microphone.");
+        });
+    } else {
+      try {
+        recognition.start();
+      } catch {}
     }
+
     recognitionRef.current = recognition;
     return () => {
       recognition.onend = null;
@@ -196,10 +239,11 @@ export default function LiveCallPage() {
     };
   }, [id, addMessage, speak, stopSpeaking]);
 
-  function toggleMic() {
+  async function toggleMic() {
     const next = !micOn;
     micOnRef.current = next;
     setMicOn(next);
+    setError("");
     if (!next) {
       try {
         recognitionRef.current?.stop();
@@ -208,9 +252,12 @@ export default function LiveCallPage() {
       }
     } else if (!endedRef.current) {
       try {
+        if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+          await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
+        }
         recognitionRef.current?.start();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.warn("Could not start recognition:", err);
       }
     }
   }
@@ -300,6 +347,11 @@ export default function LiveCallPage() {
               )}
             </button>
             <p className="mic-caption">{micOn ? "Listening" : "Muted"}</p>
+            {interimText ? (
+              <p style={{ fontSize: 13, color: "var(--accent)", marginTop: 6, fontStyle: "italic", maxWidth: 220 }}>
+                Hearing: &ldquo;{interimText}&rdquo;
+              </p>
+            ) : null}
           </div>
 
           <div>
