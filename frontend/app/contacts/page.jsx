@@ -12,7 +12,7 @@ import Alert from "../../components/ui/Alert";
 import EmptyState from "../../components/ui/EmptyState";
 import { Input } from "../../components/ui/Field";
 import { SkeletonTable } from "../../components/ui/Skeleton";
-import { IconPlus, IconPhone, IconTrash, IconInbox } from "../../components/ui/Icons";
+import { IconPlus, IconPhone, IconTrash, IconInbox, IconEdit, IconSearch } from "../../components/ui/Icons";
 
 const E164 = /^\+[1-9]\d{7,14}$/;
 
@@ -24,6 +24,7 @@ export default function ContactsPage() {
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [search, setSearch] = useState("");
 
   // Add contact form state
   const [name, setName] = useState("");
@@ -35,14 +36,26 @@ export default function ContactsPage() {
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
-  const fetchContacts = useCallback(async () => {
+  // Edit contact form state
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editCompany, setEditCompany] = useState("");
+  const [editPurpose, setEditPurpose] = useState("");
+  const [editProduct, setEditProduct] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  const fetchContacts = useCallback(async (q = "") => {
     setLoading(true);
     setError("");
     try {
-      const res = await apiFetch("/contacts?page_size=100");
+      const url = q.trim()
+        ? `/contacts?q=${encodeURIComponent(q.trim())}&page_size=100`
+        : "/contacts?page_size=100";
+      const res = await apiFetch(url);
       if (!res.ok) throw new Error(`Could not load contacts (${res.status})`);
       const data = await res.json();
-      // GET /contacts returns a bare array
       setContacts(Array.isArray(data) ? data : data.items || []);
     } catch (err) {
       setError(err.message || "Failed to load contacts");
@@ -52,8 +65,8 @@ export default function ContactsPage() {
   }, []);
 
   useEffect(() => {
-    fetchContacts();
-  }, [fetchContacts]);
+    fetchContacts(search);
+  }, [fetchContacts, search]);
 
   function validate() {
     const errs = {};
@@ -99,11 +112,59 @@ export default function ContactsPage() {
       setPhone("+91");
       setCompany("");
       setFieldErrors({});
-      await fetchContacts();
+      await fetchContacts(search);
     } catch (err) {
       setFormError(err.message);
     } finally {
       setCreateLoading(false);
+    }
+  }
+
+  function handleStartEdit(c) {
+    setEditingId(c.id);
+    setEditName(c.name || "");
+    setEditPhone(c.phone_e164 || "");
+    setEditCompany(c.company || "");
+    setEditPurpose(c.purpose || "");
+    setEditProduct(c.product || "");
+    setEditError("");
+    setShowAdd(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function handleSaveEdit(e) {
+    e.preventDefault();
+    if (!editName.trim()) {
+      setEditError("Name is required.");
+      return;
+    }
+    if (!E164.test(editPhone.trim())) {
+      setEditError("Phone must be in E.164 format (e.g. +919876543210).");
+      return;
+    }
+    setEditLoading(true);
+    setEditError("");
+    try {
+      const res = await apiFetch(`/contacts/${editingId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: editName.trim(),
+          phone_e164: editPhone.trim(),
+          company: editCompany.trim() || null,
+          purpose: editPurpose.trim() || null,
+          product: editProduct.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Could not update contact (${res.status})`);
+      }
+      setEditingId(null);
+      await fetchContacts(search);
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditLoading(false);
     }
   }
 
@@ -128,7 +189,7 @@ export default function ContactsPage() {
   }
 
   async function handleDelete(contact) {
-    const confirmed = window.confirm(`Delete ${contact.name}? This cannot be undone.`);
+    const confirmed = window.confirm(`Delete ${contact.name}? Call history will be preserved.`);
     if (!confirmed) return;
     setDeletingId(contact.id);
     setError("");
@@ -137,7 +198,7 @@ export default function ContactsPage() {
       if (!res.ok && res.status !== 204) {
         throw new Error(`Could not delete the contact (${res.status})`);
       }
-      await fetchContacts();
+      await fetchContacts(search);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -151,7 +212,13 @@ export default function ContactsPage() {
         title="Contacts"
         subtitle="Leads you call, with the details the agent greets them with."
         action={
-          <Button onClick={() => setShowAdd((v) => !v)} icon={showAdd ? undefined : <IconPlus size={15} />}>
+          <Button
+            onClick={() => {
+              setEditingId(null);
+              setShowAdd((v) => !v);
+            }}
+            icon={showAdd ? undefined : <IconPlus size={15} />}
+          >
             {showAdd ? "Close" : "Add contact"}
           </Button>
         }
@@ -225,6 +292,73 @@ export default function ContactsPage() {
         </Card>
       ) : null}
 
+      {editingId ? (
+        <Card title="Edit contact" sub="Update contact details used during agent calls.">
+          <form onSubmit={handleSaveEdit} noValidate>
+            {editError ? <Alert tone="danger">{editError}</Alert> : null}
+
+            <div className="form-grid">
+              <Input
+                label="Name *"
+                id="edit_name"
+                required
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+              <Input
+                label="Phone (E.164) *"
+                id="edit_phone"
+                required
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                hint="Country code followed by number (e.g. +919876543210)"
+              />
+              <Input
+                label="Company"
+                id="edit_company"
+                value={editCompany}
+                onChange={(e) => setEditCompany(e.target.value)}
+              />
+              <Input
+                label="Purpose"
+                id="edit_purpose"
+                value={editPurpose}
+                onChange={(e) => setEditPurpose(e.target.value)}
+              />
+              <Input
+                label="Product"
+                id="edit_product"
+                value={editProduct}
+                onChange={(e) => setEditProduct(e.target.value)}
+              />
+            </div>
+
+            <div className="form-actions">
+              <Button type="submit" loading={editLoading}>
+                {editLoading ? "Updating…" : "Update contact"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setEditingId(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
+
+      {/* Search Input Bar */}
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          placeholder="Search contacts by name or company..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search contacts"
+        />
+      </div>
+
       {error ? <Alert tone="danger">{error}</Alert> : null}
 
       {loading ? (
@@ -233,18 +367,28 @@ export default function ContactsPage() {
         <div className="card">
           <EmptyState
             icon={<IconInbox size={20} />}
-            title="No contacts yet"
-            description="Add your first lead and the agent will call them with a tailored greeting."
+            title={search ? "No matching contacts" : "No contacts yet"}
+            description={
+              search
+                ? `No contact names or companies match "${search}".`
+                : "Add your first lead and the agent will call them with a tailored greeting."
+            }
             action={
-              <Button
-                icon={<IconPlus size={15} />}
-                onClick={() => {
-                  setShowAdd(true);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-              >
-                Add contact
-              </Button>
+              search ? (
+                <Button variant="secondary" onClick={() => setSearch("")}>
+                  Clear search
+                </Button>
+              ) : (
+                <Button
+                  icon={<IconPlus size={15} />}
+                  onClick={() => {
+                    setShowAdd(true);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  Add contact
+                </Button>
+              )
             }
           />
         </div>
@@ -286,6 +430,15 @@ export default function ContactsPage() {
                     >
                       {callingId === c.id ? "Starting…" : "Start call"}
                     </Button>
+                    <button
+                      type="button"
+                      className="btn btn-icon"
+                      onClick={() => handleStartEdit(c)}
+                      aria-label={`Edit ${c.name}`}
+                      title={`Edit ${c.name}`}
+                    >
+                      <IconEdit size={14} />
+                    </button>
                     <button
                       type="button"
                       className="btn btn-icon"

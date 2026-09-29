@@ -40,6 +40,7 @@ export default function CallDetailPage() {
   const [call, setCall] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [patching, setPatching] = useState(false);
 
   const loadCall = useCallback(async () => {
     setLoading(true);
@@ -59,6 +60,24 @@ export default function CallDetailPage() {
   useEffect(() => {
     loadCall();
   }, [loadCall]);
+
+  async function handlePatchCall(updateData) {
+    setPatching(true);
+    try {
+      const res = await apiFetch(`/calls/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(updateData),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setCall((prev) => ({ ...prev, ...updated }));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setPatching(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -218,6 +237,40 @@ export default function CallDetailPage() {
               {call.outcome ? <Badge value={call.outcome} /> : <Badge value="unknown" tone="neutral">No outcome</Badge>}
               <Badge value={call.lead_status} />
               {call.followup_required ? <Badge value="followup">Follow-up needed</Badge> : <Badge value="neutral" tone="neutral">No follow-up</Badge>}
+            </div>
+
+            <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <select
+                style={{
+                  padding: "6px 10px",
+                  fontSize: 13,
+                  background: "var(--surface)",
+                  color: "var(--fg)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                }}
+                value={call.lead_status}
+                onChange={(e) => handlePatchCall({ lead_status: e.target.value })}
+                disabled={patching}
+                aria-label="Change lead status"
+              >
+                <option value="hot">Hot</option>
+                <option value="warm">Warm</option>
+                <option value="cold">Cold</option>
+                <option value="interested">Interested</option>
+                <option value="not_interested">Not Interested</option>
+                <option value="unknown">Unknown</option>
+              </select>
+
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => handlePatchCall({ followup_required: !call.followup_required })}
+                disabled={patching}
+              >
+                {patching ? "Saving…" : call.followup_required ? "Mark follow-up done" : "Flag for follow-up"}
+              </Button>
             </div>
           </Card>
 
