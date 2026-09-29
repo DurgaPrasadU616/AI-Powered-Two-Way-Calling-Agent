@@ -223,7 +223,7 @@ sequenceDiagram
 
 ---
 
-## 6. Setup Steps (1 to 8)
+## 6. Setup Instructions
 
 ### Prerequisites
 - Python 3.11+
@@ -233,15 +233,37 @@ sequenceDiagram
 
 ---
 
-### Step 1: Clone the Repository
+### 1. Clone the project
 ```bash
 git clone https://github.com/DurgaPrasadU616/AI-Powered-Two-Way-Calling-Agent.git
 cd AI-Powered-Two-Way-Calling-Agent
 ```
 
-### Step 2: Environment Configuration
-Copy `.env.example` to both the root and `backend/` directory:
+### 2. Install dependencies
+
+#### Backend Dependencies (Python):
 ```bash
+cd backend
+python -m venv .venv
+
+# On Windows (PowerShell):
+.venv\Scripts\activate
+# On Linux/macOS:
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+#### Frontend Dependencies (Node.js):
+```bash
+cd ../frontend
+npm install
+```
+
+### 3. Configure environment variables
+Copy `.env.example` to the root and `backend/` directories:
+```bash
+# From the project root:
 cp .env.example .env
 cp .env.example backend/.env
 ```
@@ -258,93 +280,61 @@ STT_PROVIDER=browser
 TTS_PROVIDER=browser
 ```
 
-### Step 3: Run PostgreSQL & Create Databases
-The application uses `calling_agent_db` for development and runtime, and **requires a separate dedicated test database `calling_agent_test` for running `pytest`** so automated tests run in complete isolation without wiping development data.
+### 4. Setup PostgreSQL
+The application uses `calling_agent_db` for runtime and **requires `calling_agent_test` for isolated `pytest` execution**.
 
 #### Option A: Docker Compose
 ```bash
 docker compose up -d
-```
-Then create the test database inside the container:
-```bash
 docker compose exec db psql -U calling_agent -d postgres -c "CREATE DATABASE calling_agent_test OWNER calling_agent;"
 ```
 
 #### Option B: Local PostgreSQL Service
-Connect via `psql` and execute:
-```sql
-CREATE USER calling_agent WITH PASSWORD 'secret';
-CREATE DATABASE calling_agent_db OWNER calling_agent;
-CREATE DATABASE calling_agent_test OWNER calling_agent;
-```
-Or run directly from your shell:
+Run via `psql`:
 ```bash
 psql -U postgres -c "CREATE USER calling_agent WITH PASSWORD 'secret';"
 psql -U postgres -c "CREATE DATABASE calling_agent_db OWNER calling_agent;"
 psql -U postgres -c "CREATE DATABASE calling_agent_test OWNER calling_agent;"
 ```
 
-### Step 4: Install Backend Dependencies & Run Migrations
+#### Run Database Migrations & Initial Seed:
 ```bash
 cd backend
-python -m venv .venv
-
-# On Windows (PowerShell):
-.venv\Scripts\activate
-# On Linux/macOS:
-source .venv/bin/activate
-
-pip install -r requirements.txt
 alembic upgrade head
-```
-
-### Step 5: Seed Database with Initial Admin & Contacts
-```bash
-# From the backend directory with venv activated:
 python scripts/seed_db.py
 ```
-This initializes:
-- Admin user: `admin@sephawk.com` (password configured via `ADMIN_PASSWORD` in `.env`)
-- Sample contacts: Rahul Kumar (Hotel Blue Diamond) & Priya Sharma (Sharma Food Industries).
+This initializes the schema and seeds admin `admin@sephawk.com` (password from `ADMIN_PASSWORD`) and sample prospects.
 
-### Step 6: Start the FastAPI Backend
+### 5. Run FastAPI
 ```bash
+cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-The backend API and Swagger docs will be accessible at `http://localhost:8000/docs`.
+The REST API, WebSocket server, and Swagger UI will be live at `http://localhost:8000` (docs at `http://localhost:8000/docs`).
 
-### Step 7: Install Frontend Dependencies & Start Next.js
-Open a new terminal:
+### 6. Run Next.js
+Open a separate terminal:
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
-The Next.js dashboard will be live at `http://localhost:3000`.
+The Next.js admin dashboard will be live at `http://localhost:3000`.
 
-### Step 8: Start a Test Call in Google Chrome
-1. Open **Google Chrome** and navigate to `http://localhost:3000`.
-2. Login with the seeded admin credentials:
-   - **Email:** `admin@sephawk.com`
-   - **Password:** The password configured in `ADMIN_PASSWORD` in your `.env` (defaults to `Admin@123`).
-3. Navigate to **Contacts** (`/contacts`) and click **"Start Call"** on any contact.
-4. Allow Chrome microphone permissions when prompted.
-5. Speak naturally into your microphone (e.g., *"I need a 500 LPH RO plant for my hotel in Bangalore with a budget of 1 lakh within 1 month. My name is Rahul Kumar"*).
-6. Click **"End Call"** and review the real-time transcript, the 9 extracted slots, the AI executive summary, and the audit events on `/calls/[id]`.
+### 7. Configure the calling provider
 
-### Step 8b: Configure Twilio Telephony (Optional)
+#### Default: Browser Mode (Zero-cost, Live in Chrome)
+By default, `CALL_PROVIDER=browser` is selected in `.env`.
+- Transcribes customer voice using Web Speech STT (`webkitSpeechRecognition`).
+- Synthesizes agent speech with browser `speechSynthesis` and detects customer barge-in.
+- **No Twilio account, phone credits, or external webhook tunnels required!**
 
-> [!NOTE]
-> **Live Demo Default:** By default, `CALL_PROVIDER=browser` is active and all features (two-way conversation, Web Speech STT, SpeechSynthesis TTS, real-time slots, barge-in, database persistence, and dashboard analytics) run directly in Google Chrome without any Twilio credentials or costs. Twilio is **100% optional**; the application starts, tests pass, and full demos operate cleanly without Twilio.
-
-If you wish to test real outbound PSTN telephony using Twilio Voice:
-1. **Sign up for a Twilio Account** and retrieve your credentials from the Twilio Console.
-2. **Start ngrok** to expose your local FastAPI backend to the public internet:
+#### Optional: Twilio Voice Outbound Telephony
+To route real phone calls over the PSTN network via Twilio:
+1. Expose your FastAPI port using ngrok:
    ```bash
    ngrok http 8000
    ```
-   Note your forwarding HTTPS URL (e.g. `https://your-subdomain.ngrok-free.app`).
-3. **Configure Twilio Environment Variables** in `backend/.env`:
+2. Configure Twilio settings in `backend/.env`:
    ```env
    CALL_PROVIDER=twilio
    TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -352,11 +342,17 @@ If you wish to test real outbound PSTN telephony using Twilio Voice:
    TWILIO_FROM_NUMBER=+1234567890
    PUBLIC_BASE_URL=https://your-subdomain.ngrok-free.app
    ```
-4. **Twilio Trial Restrictions & Regulatory Compliance**:
-   - **Verified Numbers Only:** On Twilio trial accounts, outbound calls can only be placed to verified phone numbers in your Twilio Verified Caller IDs list.
-   - **Trial Audio Notice:** Twilio plays a mandatory trial disclaimer audio before executing the TwiML webhook.
-   - **India Permissions:** For calls to Indian numbers (`+91`), Geo-Permissions must be explicitly enabled in the Twilio Console under *Voice > Settings > Geo-Permissions*.
-5. **How It Works:** When `CALL_PROVIDER=twilio`, initiating a call from `/contacts` or `POST /api/v1/calls` automatically executes `start_call` via the Twilio REST API pointing to `PUBLIC_BASE_URL/api/v1/webhooks/twilio/voice`. Twilio responds with TwiML `<Gather input="speech">`, executing customer utterances through the **same** `DialogueAgent` state machine used in browser mode. Status updates (`ringing`, `in-progress`, `completed`, `no-answer`) stream via `/api/v1/webhooks/twilio/status` with cryptographic `X-Twilio-Signature` validation.
+3. Outbound calls initiated from `/contacts` or `POST /api/v1/calls` will dial prospects through Twilio Voice, looping customer speech through TwiML `<Gather>` into the **same** conversational AI engine.
+
+### 8. Start a test call
+1. Open **Google Chrome** and navigate to `http://localhost:3000`.
+2. Login with the seeded admin credentials:
+   - **Email:** `admin@sephawk.com`
+   - **Password:** `Admin@123` (or the password configured in `ADMIN_PASSWORD` in your `.env`).
+3. Navigate to **Contacts** (`/contacts`) and click **"Start Call"** on Rahul Kumar.
+4. Allow Chrome microphone permissions when prompted.
+5. Speak naturally into your microphone (e.g., *"I need a 500 LPH RO plant for my hotel in Bangalore with a budget of 1 lakh within 1 month. My name is Rahul Kumar"*).
+6. Click **"End Call"** and review the real-time transcript, the 9 extracted slots, the AI executive summary, and the audit events on `/calls/[id]`.
 
 ---
 
