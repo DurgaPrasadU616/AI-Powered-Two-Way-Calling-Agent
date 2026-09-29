@@ -96,10 +96,36 @@ class CallSession:
     # ── lifecycle ───────────────────────────────────────────────────────────
     async def start(self) -> None:
         """Mark the call in progress, send the templated opening line."""
+        if settings.SIMULATE_FAILURE == "provider":
+            raise RuntimeError("Simulated provider failure via SIMULATE_FAILURE=provider")
+
         async with self.session_factory() as db:
             call = await db.get(Call, self.call_id)
             if call is None:
                 raise LookupError(f"call {self.call_id} not found")
+
+            # Check phone validity when call is attempted
+            from app.schemas.contact import validate_e164
+
+            try:
+                validate_e164(call.phone_number)
+            except Exception:
+                call.status = CallStatus.invalid_number
+                db.add(
+                    CallEvent(
+                        call_id=self.call_id,
+                        event_type="invalid_number",
+                        detail={"phone_number": call.phone_number},
+                    )
+                )
+                await db.commit()
+                await self._emit(
+                    {"type": "call_status", "status": "invalid_number", "reason": "invalid_number"}
+                )
+                self.closed = True
+                self.finished = True
+                return
+
             contact = await db.get(Contact, call.contact_id) if call.contact_id else None
             call.status = CallStatus.in_progress
             call.start_time = datetime.now(tz=UTC)
@@ -134,6 +160,14 @@ class CallSession:
             if self.closed:
                 return
             async with self.session_factory() as db:
+                if settings.SIMULATE_FAILURE == "stt":
+                    db.add(
+                        CallEvent(
+                            call_id=self.call_id,
+                            event_type="stt_failure",
+                            detail={"simulated": True},
+                        )
+                    )
                 if turn.extra.get("llm_error"):
                     db.add(
                         CallEvent(
@@ -225,6 +259,7 @@ class CallSession:
                     "duration_seconds": duration,
                 }
             )
+            print("STEP 11: done finish!", flush=True)
             logger.info(
                 "Call session finished",
                 extra={"call_id": str(self.call_id), "reason": reason, "status": status.value},

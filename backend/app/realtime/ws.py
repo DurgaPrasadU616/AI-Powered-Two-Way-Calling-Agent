@@ -6,6 +6,7 @@ import json
 import uuid
 from contextlib import suppress
 
+import anyio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -104,9 +105,8 @@ async def ws_call(websocket: WebSocket, call_id: str, token: str | None = None) 
                     await _error(websocket, "customer_speech requires non-empty text")
                     continue
                 confidence = message.get("confidence")
-                if not isinstance(confidence, (int, float)):
-                    confidence = None
-                await session.on_customer_speech(text, float(confidence))
+                conf_val = float(confidence) if isinstance(confidence, (int, float)) else None
+                await session.on_customer_speech(text, conf_val)
             elif kind == "interrupt":
                 await session.on_interrupt()
             elif kind == "end_call":
@@ -144,9 +144,10 @@ async def ws_call(websocket: WebSocket, call_id: str, token: str | None = None) 
         with suppress(Exception):
             await _error(websocket, "internal error")
     finally:
-        if session is not None:
-            await session.on_disconnect()
-        await engine.dispose()
+        with anyio.CancelScope(shield=True):
+            if session is not None:
+                await session.on_disconnect()
+            await engine.dispose()
 
 
 __all__ = ["router"]

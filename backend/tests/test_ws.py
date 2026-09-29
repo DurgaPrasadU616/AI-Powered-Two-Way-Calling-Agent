@@ -73,6 +73,8 @@ async def _make_call(db) -> uuid.UUID:
 def _install_fake_llm(monkeypatch, replies=None) -> _FakeLLM:
     fake = _FakeLLM(list(replies if replies is not None else _SCRIPTED_REPLIES))
     monkeypatch.setattr(call_session_module, "get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.summary_service.get_llm", lambda: fake)
+    monkeypatch.setattr("app.agent.llm.get_llm", lambda: fake)
     return fake
 
 
@@ -193,8 +195,13 @@ async def test_ws_disconnect_marks_disconnected_with_summary(db, monkeypatch) ->
             ws.send_json({"type": "customer_speech", "text": "I need an RO plant"})
             ws.receive_json()  # agent_reply
             ws.receive_json()  # state_update
-        # client dropped — give the server loop a moment to finish
-        await asyncio.sleep(0.3)
+        # client dropped — wait for server loop to finish disconnect processing
+        for _ in range(30):
+            await asyncio.sleep(0.1)
+            async with db() as session:
+                call = await session.get(Call, call_id)
+                if call and call.status == CallStatus.disconnected:
+                    break
 
     async with db() as session:
         call = await session.get(Call, call_id)
@@ -333,3 +340,79 @@ async def test_ws_auth_accepted_with_valid_token(db) -> None:
     ):
         opening = ws.receive_json()
         assert opening["type"] == "agent_reply"
+
+
+async def test_ws_invalid_phone_records_invalid_number_status(db) -> None:
+    async with db() as session:
+        call = Call(
+            phone_number="not-a-valid-phone",
+            status=CallStatus.queued,
+            lead_status=LeadStatus.unknown,
+            followup_required=False,
+        )
+        session.add(call)
+        await session.commit()
+        call_id = call.id
+
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws,
+    ):
+        status = ws.receive_json()
+        assert status["type"] == "call_status"
+        assert status["status"] == "invalid_number"
+
+    async with db() as session:
+        refreshed = await session.get(Call, call_id)
+        assert refreshed.status == CallStatus.invalid_number
+        events = (
+            (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id)))
+            .unique()
+            .all()
+        )
+        assert "invalid_number" in {e.event_type for e in events}
+
+
+async def test_ws_simulate_failure_paths(db, monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+
+    # 1. Provider failure simulation
+    monkeypatch.setattr(settings, "SIMULATE_FAILURE", "provider")
+    call_id = await _make_call(db)
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/{call_id}?token={_TOKEN}") as ws,
+    ):
+        err = ws.receive_json()
+        assert err["type"] == "error"
+
+    async with db() as session:
+        events = (
+            (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id)))
+            .unique()
+            .all()
+        )
+        assert "provider_error" in {e.event_type for e in events}
+
+    # 2. STT and LLM failure simulation
+    monkeypatch.setattr(settings, "SIMULATE_FAILURE", "stt")
+    call_id2 = await _make_call(db)
+    with (
+        TestClient(app) as http,
+        http.websocket_connect(f"/ws/call/{call_id2}?token={_TOKEN}") as ws2,
+    ):
+        ws2.receive_json()  # opening
+        ws2.receive_json()  # state
+        ws2.send_json({"type": "customer_speech", "text": "I need commercial RO"})
+        ws2.receive_json()  # reply
+        ws2.receive_json()  # state
+
+    async with db() as session:
+        events = (
+            (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id2)))
+            .unique()
+            .all()
+        )
+        assert "stt_failure" in {e.event_type for e in events}

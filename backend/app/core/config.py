@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_PHONE_NUMBER: str = ""
 
+    # ── Dev failure simulation (dev/demo: stt | llm | provider) ────────
+    SIMULATE_FAILURE: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

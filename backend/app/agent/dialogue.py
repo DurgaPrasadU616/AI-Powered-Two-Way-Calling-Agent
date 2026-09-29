@@ -19,9 +19,11 @@ from app.agent.slots import (
     detect_application,
     question_for,
 )
+from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 
 # ── States ────────────────────────────────────────────────────────────────────
@@ -149,6 +151,7 @@ class DialogueAgent:
         self.pending_slot: str | None = None
         self.last_asked_slot: str | None = None
         self.not_interested = False
+        self.last_llm_error: str | None = None
 
     # ── helpers ──────────────────────────────────────────────────────────────
     @classmethod
@@ -310,12 +313,18 @@ class DialogueAgent:
         """Deterministic reply first; optionally polish via LLM with fallback."""
         reply, asked_slot = self._fallback_reply(text)
         # closings/WRAP_UP are state-critical — always keep the deterministic text
+        self.last_llm_error = None
+        if settings.SIMULATE_FAILURE == "llm":
+            self.last_llm_error = "Simulated LLM failure via SIMULATE_FAILURE=llm"
+            logger.warning("Simulating LLM failure via SIMULATE_FAILURE=llm")
+            return reply, asked_slot
         if self.llm is None or not self.llm.available or self.ended:
             return reply, asked_slot
         try:
             candidate = _clean(await self.llm.chat(self._llm_prompt(text)))
         except LLMError as exc:
             logger.warning("LLM reply failed, using fallback", extra={"error": str(exc)})
+            self.last_llm_error = str(exc)
             return reply, asked_slot
         # guardrails: keep the voice contract no matter what the model says
         if not candidate or len(candidate) > 320 or candidate.count("?") > 1:
@@ -337,7 +346,7 @@ class DialogueAgent:
             asked_slot=asked_slot,
             ended=self.phase == Phase.ENDED,
             state=self.phase.value,
-            extra={"not_interested": self.not_interested},
+            extra={"not_interested": self.not_interested, "llm_error": self.last_llm_error},
         )
 
 
