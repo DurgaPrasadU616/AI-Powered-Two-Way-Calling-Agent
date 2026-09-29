@@ -268,3 +268,27 @@ async def test_call_created_event_logged(client: AsyncClient, auth_headers: dict
             (await session.scalars(select(CallEvent).where(CallEvent.call_id == call_id))).all()
         )
     assert [e.event_type for e in events] == ["call_created"]
+
+
+async def test_patch_call_metadata(client: AsyncClient, auth_headers: dict, db) -> None:
+    created = await client.post(
+        "/calls", json={"phone_number": "+919876543210"}, headers=auth_headers
+    )
+    call_id = created.json()["id"]
+
+    # PATCH lead_status and followup_required
+    patch_res = await client.patch(
+        f"/calls/{call_id}",
+        json={"lead_status": "hot", "followup_required": True, "outcome": "interested"},
+        headers=auth_headers,
+    )
+    assert patch_res.status_code == 200
+    data = patch_res.json()
+    assert data["lead_status"] == "hot"
+    assert data["followup_required"] is True
+    assert data["outcome"] == "interested"
+
+    # Verify detail reflects updated state
+    detail_res = await client.get(f"/calls/{call_id}", headers=auth_headers)
+    assert detail_res.status_code == 200
+    assert detail_res.json()["lead_status"] == "hot"

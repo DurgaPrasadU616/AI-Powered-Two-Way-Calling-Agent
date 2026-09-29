@@ -116,3 +116,20 @@ async def test_delete_contact(client: AsyncClient, auth_headers: dict, make_cont
 
     again = await client.delete(f"/contacts/{created['id']}", headers=auth_headers)
     assert again.status_code == 404
+
+
+async def test_delete_contact_preserves_calls(
+    client: AsyncClient, auth_headers: dict, make_contact, db
+) -> None:
+    created = await make_contact(name="Client With Calls")
+    call_res = await client.post("/calls", json={"contact_id": created["id"]}, headers=auth_headers)
+    call_id = call_res.json()["id"]
+
+    # Deleting contact succeeds without foreign key violation
+    del_res = await client.delete(f"/contacts/{created['id']}", headers=auth_headers)
+    assert del_res.status_code == 204
+
+    # Call still exists in history with contact_id set to None
+    call_check = await client.get(f"/calls/{call_id}", headers=auth_headers)
+    assert call_check.status_code == 200
+    assert call_check.json()["contact_id"] is None

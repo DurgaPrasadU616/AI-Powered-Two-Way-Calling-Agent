@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.models.admin import Admin
+from app.db.models.call import Call
 from app.db.models.contact import Contact
 from app.db.session import get_db
 from app.schemas.contact import ContactCreate, ContactRead, ContactUpdate
@@ -81,6 +82,7 @@ async def delete_contact(
     contact = await session.get(Contact, contact_id)
     if contact is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    await session.execute(update(Call).where(Call.contact_id == contact_id).values(contact_id=None))
     await session.delete(contact)
     await session.flush()
     return Response(status_code=204)

@@ -18,6 +18,7 @@ from app.schemas.call import (
     CallDetailRead,
     CallListResponse,
     CallRead,
+    CallUpdate,
     PageMeta,
 )
 from app.services import call_service
@@ -111,4 +112,20 @@ async def end_call(
     if call is None:
         raise HTTPException(status_code=404, detail="Call not found")
     call = await call_service.end_call(session, call)
+    return CallRead.model_validate(call)
+
+
+@router.patch("/{call_id}", response_model=CallRead, summary="Update call outcome or lead status")
+async def update_call(
+    call_id: uuid.UUID,
+    payload: CallUpdate,
+    _: Admin = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> CallRead:
+    call = await call_service.get_call(session, call_id)
+    if call is None:
+        raise HTTPException(status_code=404, detail="Call not found")
+    for key, val in payload.model_dump(exclude_unset=True).items():
+        setattr(call, key, val)
+    await session.flush()
     return CallRead.model_validate(call)

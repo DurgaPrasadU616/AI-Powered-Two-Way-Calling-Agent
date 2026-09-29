@@ -37,6 +37,14 @@ class CallCreate(BaseModel):
         return None if value is None else validate_e164(value)
 
 
+class CallUpdate(BaseModel):
+    """Update call outcome, lead qualification status, or follow-up flag."""
+
+    lead_status: LeadStatus | None = None
+    followup_required: bool | None = None
+    outcome: CallOutcome | None = None
+
+
 # ── Read ──────────────────────────────────────────────────────────────────────
 class CallRead(BaseModel):
     id: uuid.UUID
