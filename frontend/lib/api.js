@@ -18,7 +18,17 @@ export function clearToken() {
 }
 
 export async function apiFetch(endpoint, credentials = {}) {
+  const isAuthEndpoint = endpoint.startsWith("/auth") || endpoint.startsWith("auth");
   const token = getToken();
+
+  if (!token && !isAuthEndpoint && typeof window !== "undefined") {
+    clearToken();
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+    return new Response(JSON.stringify({ detail: "Not authenticated" }), { status: 401 });
+  }
+
   const headers = {
     "Content-Type": "application/json",
     ...(credentials.headers || {}),

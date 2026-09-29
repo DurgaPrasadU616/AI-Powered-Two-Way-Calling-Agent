@@ -28,9 +28,6 @@ export default function LiveCallPage() {
   const [error, setError] = useState("");
   const [call, setCall] = useState(null);
   const [textInput, setTextInput] = useState("");
-  // Display-only state (mirrors the refs above so the UI re-renders)
-  const [ended, setEnded] = useState(false);
-  const [micBlocked, setMicBlocked] = useState(false);
 
   const wsRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -38,7 +35,6 @@ export default function LiveCallPage() {
   const endedRef = useRef(false);
   const speakingRef = useRef(false);
   const utteranceRef = useRef(null);
-  const transcriptRef = useRef(null);
 
   const addMessage = useCallback((speaker, text) => {
     setMessages((prev) => [...prev, { speaker, text }]);
@@ -113,9 +109,6 @@ export default function LiveCallPage() {
       }
     };
     recognition.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        setMicBlocked(true);
-      }
       if (wsRef.current?.readyState === WebSocket.OPEN && e.error !== "no-speech") {
         wsRef.current.send(JSON.stringify({ type: "stt_failure", detail: { error: e.error } }));
       }
@@ -145,6 +138,11 @@ export default function LiveCallPage() {
       typeof window !== "undefined"
         ? localStorage.getItem("token") || sessionStorage.getItem("token")
         : null;
+
+    if (!token && typeof window !== "undefined") {
+      window.location.href = "/login";
+      return;
+    }
     fetch(`${API}/calls/${id}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -171,7 +169,6 @@ export default function LiveCallPage() {
         case "call_status":
           setStatus(message.status);
           endedRef.current = true;
-          setEnded(true);
           stopSpeaking();
           break;
         case "error":
@@ -199,12 +196,6 @@ export default function LiveCallPage() {
     };
   }, [id, addMessage, speak, stopSpeaking]);
 
-  // keep the transcript pinned to the newest message
-  useEffect(() => {
-    const el = transcriptRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
-
   function toggleMic() {
     const next = !micOn;
     micOnRef.current = next;
@@ -227,7 +218,6 @@ export default function LiveCallPage() {
   function endCall() {
     wsRef.current?.send(JSON.stringify({ type: "end_call" }));
     endedRef.current = true;
-    setEnded(true);
     stopSpeaking();
     try {
       recognitionRef.current?.stop();
@@ -254,7 +244,7 @@ export default function LiveCallPage() {
   // Display state only — the logic above still reads from the refs.
   let statusLabel = "Connecting";
   let ringClass = "is-connecting";
-  if (ended || status === "completed" || status === "disconnected" || status === "failed") {
+  if (endedRef.current || status === "completed" || status === "disconnected" || status === "failed") {
     statusLabel = "Call ended";
     ringClass = "is-ended";
   } else if (status === "closed") {
@@ -286,9 +276,9 @@ export default function LiveCallPage() {
           <div>
             <button
               type="button"
-              className={`mic-btn ${micOn && !ended ? "is-live" : "is-muted"}`}
+              className={`mic-btn ${micOn && !endedRef.current ? "is-live" : "is-muted"}`}
               onClick={toggleMic}
-              disabled={ended}
+              disabled={endedRef.current}
               aria-pressed={micOn}
               aria-label={micOn ? "Mute microphone" : "Unmute microphone"}
             >
@@ -317,13 +307,13 @@ export default function LiveCallPage() {
               type="button"
               className="btn btn-danger"
               onClick={endCall}
-              disabled={ended}
+              disabled={endedRef.current}
               style={{ minWidth: 140, minHeight: 48 }}
             >
               End call
             </button>
             <p className="mic-caption">
-              {ended ? (
+              {endedRef.current ? (
                 <Link href={`/calls/${id}`}>View call summary →</Link>
               ) : (
                 "Hangs up and saves the summary"
@@ -338,12 +328,6 @@ export default function LiveCallPage() {
       {error ? (
         <div className="alert alert-danger" role="alert">
           {error}
-        </div>
-      ) : null}
-      {micBlocked ? (
-        <div className="alert alert-warning" role="alert">
-          Microphone access is blocked. Allow it in your browser address bar, or type your replies
-          below.
         </div>
       ) : null}
 
@@ -372,7 +356,7 @@ export default function LiveCallPage() {
           </span>
         </div>
 
-        <div className="live-transcript" ref={transcriptRef} aria-live="polite" aria-relevant="additions">
+        <div className="live-transcript" aria-live="polite" aria-relevant="additions">
           {messages.length === 0 ? (
             <p className="card-sub" style={{ textAlign: "center", marginTop: 24 }}>
               Waiting for the agent to pick up…
@@ -392,13 +376,13 @@ export default function LiveCallPage() {
         <form onSubmit={handleSendText} className="live-composer">
           <input
             className="input"
-            placeholder={ended ? "Call ended" : "Type a reply instead of speaking…"}
+            placeholder={endedRef.current ? "Call ended" : "Type a reply instead of speaking…"}
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
-            disabled={ended}
+            disabled={endedRef.current}
             aria-label="Type a reply"
           />
-          <button type="submit" className="btn" disabled={ended || !textInput.trim()}>
+          <button type="submit" className="btn" disabled={endedRef.current || !textInput.trim()}>
             Send
           </button>
         </form>
