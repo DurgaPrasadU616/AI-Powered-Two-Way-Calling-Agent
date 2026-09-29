@@ -27,7 +27,7 @@ class CallTurn(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     call_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("calls.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
     )
     turn_index: Mapped[int] = mapped_column(Integer, nullable=False)
     speaker: Mapped[Speaker] = mapped_column(

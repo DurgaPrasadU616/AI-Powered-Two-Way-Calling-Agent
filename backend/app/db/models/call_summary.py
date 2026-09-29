@@ -22,7 +22,7 @@ class CallSummary(Base):
     __tablename__ = "call_summaries"
 
     call_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("calls.id"), primary_key=True
+        UUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), primary_key=True
     )
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     key_requirements: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

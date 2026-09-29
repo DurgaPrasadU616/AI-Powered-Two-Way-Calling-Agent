@@ -20,7 +20,7 @@ class CallExtractedData(Base):
     __tablename__ = "call_extracted_data"
 
     call_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("calls.id"), primary_key=True
+        UUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), primary_key=True
     )
     # Slots extracted by the agent planner
     customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

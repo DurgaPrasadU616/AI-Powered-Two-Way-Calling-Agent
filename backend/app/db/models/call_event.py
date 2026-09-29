@@ -21,7 +21,7 @@ class CallEvent(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     call_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("calls.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False, index=True
     )
     # e.g. no_answer | silence_timeout | stt_failure | llm_failure |
     #       interrupted | provider_error | disconnected | call_started | call_ended
