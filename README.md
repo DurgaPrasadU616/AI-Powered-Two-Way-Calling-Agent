@@ -18,7 +18,7 @@ An autonomous, full-stack outbound sales qualification system for commercial and
 
 | Admin Dashboard | Live Call Interface |
 | :---: | :---: |
-| ![Dashboard Screenshot](https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/AI-Powered-Two-Way-Calling-Agent/main/docs/dashboard.png) | ![Live Call Screenshot](https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/AI-Powered-Two-Way-Calling-Agent/main/docs/live-call.png) |
+| ![Dashboard Screenshot](https://raw.githubusercontent.com/DurgaPrasadU616/AI-Powered-Two-Way-Calling-Agent/main/docs/dashboard.png) | ![Live Call Screenshot](https://raw.githubusercontent.com/DurgaPrasadU616/AI-Powered-Two-Way-Calling-Agent/main/docs/live-call.png) |
 
 ---
 
@@ -66,7 +66,7 @@ graph TB
 
     subgraph Gateway["API & Communication Gateway (FastAPI)"]
         AuthMid["JWT Auth Guard"]
-        REST["REST Routes (/auth, /contacts, /calls, /dashboard, /health)"]
+        REST["REST API (/api/v1/*)"]
         WSRoute["WebSocket Handler (/ws/call/{id})"]
         SessionMgr["CallSession (Lock & Lifecycle)"]
     end
@@ -163,7 +163,7 @@ sequenceDiagram
     autonumber
     actor Admin as Sales Admin
     participant UI as Next.js Admin UI
-    participant API as FastAPI REST
+    participant API as FastAPI REST (/api/v1)
     participant WS as FastAPI WebSocket
     participant Session as CallSession Lock
     participant Agent as DialogueAgent & Extractor
@@ -172,7 +172,7 @@ sequenceDiagram
     participant TTS as Browser SpeechSynthesis
 
     Admin->>UI: Click "Start Call" on Contact row
-    UI->>API: POST /calls {"contact_id": 1}
+    UI->>API: POST /api/v1/calls {"contact_id": 1}
     API->>DB: INSERT into calls (status='queued')
     API-->>UI: 201 Created {id: "call-uuid"}
     UI->>UI: Navigate to /live-call/{id}
@@ -235,7 +235,7 @@ sequenceDiagram
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/<YOUR_GITHUB_USERNAME>/AI-Powered-Two-Way-Calling-Agent.git
+git clone https://github.com/DurgaPrasadU616/AI-Powered-Two-Way-Calling-Agent.git
 cd AI-Powered-Two-Way-Calling-Agent
 ```
 
@@ -258,17 +258,30 @@ STT_PROVIDER=browser
 TTS_PROVIDER=browser
 ```
 
-### Step 3: Run PostgreSQL
+### Step 3: Run PostgreSQL & Create Databases
+The application uses `calling_agent_db` for development and runtime, and **requires a separate dedicated test database `calling_agent_test` for running `pytest`** so automated tests run in complete isolation without wiping development data.
+
 #### Option A: Docker Compose
 ```bash
 docker compose up -d
 ```
+Then create the test database inside the container:
+```bash
+docker compose exec db psql -U calling_agent -d postgres -c "CREATE DATABASE calling_agent_test OWNER calling_agent;"
+```
+
 #### Option B: Local PostgreSQL Service
-Create the dev and test databases:
+Connect via `psql` and execute:
 ```sql
 CREATE USER calling_agent WITH PASSWORD 'secret';
 CREATE DATABASE calling_agent_db OWNER calling_agent;
 CREATE DATABASE calling_agent_test OWNER calling_agent;
+```
+Or run directly from your shell:
+```bash
+psql -U postgres -c "CREATE USER calling_agent WITH PASSWORD 'secret';"
+psql -U postgres -c "CREATE DATABASE calling_agent_db OWNER calling_agent;"
+psql -U postgres -c "CREATE DATABASE calling_agent_test OWNER calling_agent;"
 ```
 
 ### Step 4: Install Backend Dependencies & Run Migrations
@@ -276,7 +289,7 @@ CREATE DATABASE calling_agent_test OWNER calling_agent;
 cd backend
 python -m venv .venv
 
-# On Windows:
+# On Windows (PowerShell):
 .venv\Scripts\activate
 # On Linux/macOS:
 source .venv/bin/activate
@@ -291,7 +304,7 @@ alembic upgrade head
 python scripts/seed_db.py
 ```
 This initializes:
-- Admin user: `admin@sephawk.com` (password from `ADMIN_PASSWORD` in `.env`)
+- Admin user: `admin@sephawk.com` (password configured via `ADMIN_PASSWORD` in `.env`)
 - Sample contacts: Rahul Kumar (Hotel Blue Diamond) & Priya Sharma (Sharma Food Industries).
 
 ### Step 6: Start the FastAPI Backend
@@ -323,19 +336,19 @@ The Next.js dashboard will be live at `http://localhost:3000`.
 
 ## 7. API Reference
 
-All backend routes are mounted without an `/api/v1` prefix.
+All REST endpoints are available under the `/api/v1` prefix (with compatibility fallback at the root level).
 
 | Method | Endpoint | Description | Auth Required | Request / Query Parameters |
 | :--- | :--- | :--- | :---: | :--- |
-| `POST` | `/auth/login` | Exchange admin credentials for a JWT access token | No | JSON: `email`, `password` |
-| `GET` | `/auth/me` | Fetch authenticated admin identity | Yes (Bearer) | Header: `Authorization: Bearer <token>` |
-| `GET` | `/dashboard/stats` | Aggregated call metrics & KPI counters | Yes (Bearer) | None |
-| `GET` | `/contacts` | List contacts with optional search & pagination | Yes (Bearer) | Query: `search`, `limit`, `offset` |
-| `POST` | `/contacts` | Create a new validated sales contact | Yes (Bearer) | JSON: `name`, `phone_e164`, `company`, `purpose`, `product` |
-| `GET` | `/contacts/{contact_id}` | Retrieve contact details by ID | Yes (Bearer) | Path: `contact_id` (integer) |
-| `GET` | `/calls` | Filtered, paginated list of calls | Yes (Bearer) | Query: `status`, `lead_status`, `outcome`, `customer`, `date_from`, `date_to`, `page`, `page_size` |
-| `POST` | `/calls` | Queue a new outbound call | Yes (Bearer) | JSON: `contact_id` (int) or `phone_number` (E.164) |
-| `GET` | `/calls/{call_id}` | Full call dossier (turns, slots, summary, events) | Yes (Bearer) | Path: `call_id` (UUID) |
+| `POST` | `/api/v1/auth/login` | Exchange admin credentials for a JWT access token | No | JSON: `email`, `password` |
+| `GET` | `/api/v1/auth/me` | Fetch authenticated admin identity | Yes (Bearer) | Header: `Authorization: Bearer <token>` |
+| `GET` | `/api/v1/dashboard/stats` | Aggregated call metrics & KPI counters | Yes (Bearer) | None |
+| `GET` | `/api/v1/contacts` | List contacts with optional search & pagination | Yes (Bearer) | Query: `search`, `limit`, `offset` |
+| `POST` | `/api/v1/contacts` | Create a new validated sales contact | Yes (Bearer) | JSON: `name`, `phone_e164`, `company`, `purpose`, `product` |
+| `GET` | `/api/v1/contacts/{contact_id}` | Retrieve contact details by ID | Yes (Bearer) | Path: `contact_id` (integer) |
+| `GET` | `/api/v1/calls` | Filtered, paginated list of calls | Yes (Bearer) | Query: `status`, `lead_status`, `outcome`, `customer`, `date_from`, `date_to`, `page`, `page_size` |
+| `POST` | `/api/v1/calls` | Queue a new outbound call | Yes (Bearer) | JSON: `contact_id` (int) or `phone_number` (E.164) |
+| `GET` | `/api/v1/calls/{call_id}` | Full call dossier (turns, slots, summary, events) | Yes (Bearer) | Path: `call_id` (UUID) |
 | `GET` | `/health` | Liveness check & service status | No | None |
 | `WS` | `/ws/call/{call_id}` | Live bidirectional audio & speech event stream | Yes (Query) | Query: `?token=<jwt_access_token>` |
 
@@ -343,7 +356,7 @@ All backend routes are mounted without an `/api/v1` prefix.
 
 ## 8. WebSocket Protocol Specification
 
-The `/ws/call/{call_id}?token={token}` endpoint powers the live interactive call session:
+The `/ws/call/{call_id}?token={token}` endpoint (also accessible at `/api/v1/ws/call/{call_id}?token={token}`) powers the live interactive call session:
 
 ### Client -> Server Messages
 | Type | Payload Schema | Description |
@@ -667,7 +680,7 @@ tests/test_security.py .....                                             [ 79%]
 tests/test_summary.py .........                                          [ 88%]
 tests/test_ws.py .............                                           [100%]
 
-============================ 102 passed in 27.22s =============================
+============================ 102 passed in 28.28s =============================
 ```
 
 ### Run Code Formatters & Linters

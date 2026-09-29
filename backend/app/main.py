@@ -80,5 +80,7 @@ async def health_check() -> dict:
 from app.api.v1 import api_router  # noqa: E402  (after handlers so 404s are shaped)
 from app.realtime import ws_router  # noqa: E402
 
+app.include_router(api_router, prefix="/api/v1")
 app.include_router(api_router)
+app.include_router(ws_router, prefix="/api/v1")
 app.include_router(ws_router)
