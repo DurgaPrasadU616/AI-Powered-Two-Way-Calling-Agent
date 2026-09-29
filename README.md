@@ -1,6 +1,24 @@
 # AI-Powered Two-Way Calling Agent
 
-An autonomous, full-stack outbound sales qualification system for commercial and industrial Reverse Osmosis (RO) water treatment plants. The system conducts human-like, two-way conversational voice calls, extracts 9 critical qualification slots in real time, manages conversation state with a deterministic finite-state planner and Gemini LLM phrasing, records audit events, generates post-call summaries, and displays live analytics and call history on an admin dashboard.
+[![Tests](https://img.shields.io/badge/tests-102%20passed-brightgreen)](#testing)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)](https://www.postgresql.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+An autonomous, full-stack outbound sales qualification system for commercial and industrial Reverse Osmosis (RO) water treatment plants (SERP Hawk). The system conducts natural, two-way conversational voice calls, extracts 9 critical qualification slots in real time, steers conversations using a deterministic finite-state planner paired with Google Gemini 2.5 Flash, records audit events, generates post-call summaries, and visualizes call telemetry on a Next.js admin dashboard.
+
+---
+
+## Demo & Screenshots
+
+<!-- Replace DEMO_VIDEO_ID with your YouTube / Loom video ID -->
+[![Watch Demo Video](https://img.youtube.com/vi/DEMO_VIDEO_ID/maxresdefault.jpg)](https://youtube.com/watch?v=DEMO_VIDEO_ID)
+
+| Admin Dashboard | Live Call Interface |
+| :---: | :---: |
+| ![Dashboard Screenshot](https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/AI-Powered-Two-Way-Calling-Agent/main/docs/dashboard.png) | ![Live Call Screenshot](https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/AI-Powered-Two-Way-Calling-Agent/main/docs/live-call.png) |
 
 ---
 
@@ -8,11 +26,11 @@ An autonomous, full-stack outbound sales qualification system for commercial and
 
 The **AI-Powered Two-Way Calling Agent** solves high-volume outbound lead qualification for commercial equipment sales. When an admin initiates a call to a prospect:
 1. The agent delivers an opening greeting tailored to the prospect and product.
-2. The browser captures customer audio using the **Web Speech API** (Speech-to-Text), streaming transcribed text over an authenticated **WebSocket** connection.
+2. The browser captures customer audio using the **Web Speech API** (`webkitSpeechRecognition`), streaming transcribed text over an authenticated **WebSocket** connection.
 3. The backend orchestrates a multi-phase conversation pipeline:
-   - **Perceives** customer utterances and tracks silence intervals.
+   - **Perceives** customer utterances, tracks silence intervals, and detects customer interruptions (barge-in).
    - **Extracts** structured slot values (capacity, location, budget, timeline, application, etc.) using hybrid heuristic and regex parsers.
-   - **Plans** the next conversational move via a deterministic finite-state machine (FSM) ensuring all mandatory slots are gathered without LLM drift.
+   - **Plans** the next conversational move via a deterministic finite-state machine (FSM) ensuring all mandatory slots are gathered without hallucination or topic drift.
    - **Responds** using **Google Gemini 2.5 Flash** to craft polite, concise, voice-friendly conversational turns (with automatic rule-based fallback).
    - **Persists** every turn, intermediate slot state, and lifecycle audit event into **PostgreSQL**.
 4. The frontend synthesizes the agent's reply via browser **SpeechSynthesis** (Text-to-Speech) with barge-in interruption detection.
@@ -48,7 +66,7 @@ graph TB
 
     subgraph Gateway["API & Communication Gateway (FastAPI)"]
         AuthMid["JWT Auth Guard"]
-        APIRoutes["REST API (/api/v1/*)"]
+        REST["REST Routes (/auth, /contacts, /calls, /dashboard, /health)"]
         WSRoute["WebSocket Handler (/ws/call/{id})"]
         SessionMgr["CallSession (Lock & Lifecycle)"]
     end
@@ -72,12 +90,12 @@ graph TB
         T_Admins["admins"]
     end
 
-    UI -->|REST + Bearer Token| APIRoutes
+    UI -->|REST + Bearer Token| REST
     WSClient <-->|Duplex Frames| WSRoute
     STT -->|Speech Events| WSClient
     WSClient -->|Speak Utterance| TTS
 
-    APIRoutes --> AuthMid
+    REST --> AuthMid
     WSRoute --> AuthMid
     WSRoute --> SessionMgr
     SessionMgr --> FSM
@@ -87,7 +105,7 @@ graph TB
     SessionMgr --> SummaryEngine
     SummaryEngine --> LLMClient
 
-    APIRoutes --> DB
+    REST --> DB
     SessionMgr --> DB
     DB --- T_Calls
     DB --- T_Turns
@@ -154,7 +172,7 @@ sequenceDiagram
     participant TTS as Browser SpeechSynthesis
 
     Admin->>UI: Click "Start Call" on Contact row
-    UI->>API: POST /api/v1/calls {contact_id}
+    UI->>API: POST /calls {"contact_id": 1}
     API->>DB: INSERT into calls (status='queued')
     API-->>UI: 201 Created {id: "call-uuid"}
     UI->>UI: Navigate to /live-call/{id}
@@ -217,24 +235,24 @@ sequenceDiagram
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/DurgaPrasadU616/AI-Powered-Two-Way-Calling-Agent.git
+git clone https://github.com/<YOUR_GITHUB_USERNAME>/AI-Powered-Two-Way-Calling-Agent.git
 cd AI-Powered-Two-Way-Calling-Agent
 ```
 
 ### Step 2: Environment Configuration
-Copy the `.env.example` file to create your local environment:
+Copy `.env.example` to both the root and `backend/` directory:
 ```bash
 cp .env.example .env
 cp .env.example backend/.env
 ```
-Fill in your configuration keys:
+Update `backend/.env` with your Google Gemini API key:
 ```ini
 # backend/.env
 DATABASE_URL=postgresql+asyncpg://calling_agent:secret@localhost:5432/calling_agent_db
-SECRET_KEY=your_super_secret_jwt_key_here
-GEMINI_API_KEY=your_google_gemini_api_key_here
+SECRET_KEY=change-me-to-a-random-32-char-string-in-production
+GEMINI_API_KEY=your_actual_gemini_api_key_here
 ADMIN_EMAIL=admin@sephawk.com
-ADMIN_PASSWORD=AdminPassword123!
+ADMIN_PASSWORD=Admin@123
 CALL_PROVIDER=browser
 STT_PROVIDER=browser
 TTS_PROVIDER=browser
@@ -257,65 +275,95 @@ CREATE DATABASE calling_agent_test OWNER calling_agent;
 ```bash
 cd backend
 python -m venv .venv
-# Windows:
+
+# On Windows:
 .venv\Scripts\activate
-# Linux/macOS:
+# On Linux/macOS:
 source .venv/bin/activate
 
 pip install -r requirements.txt
 alembic upgrade head
 ```
 
-### Step 5: Start the FastAPI Backend
+### Step 5: Seed Database with Initial Admin & Contacts
 ```bash
-# From the backend directory:
+# From the backend directory with venv activated:
+python scripts/seed_db.py
+```
+This initializes:
+- Admin user: `admin@sephawk.com` (password from `ADMIN_PASSWORD` in `.env`)
+- Sample contacts: Rahul Kumar (Hotel Blue Diamond) & Priya Sharma (Sharma Food Industries).
+
+### Step 6: Start the FastAPI Backend
+```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-The API and Swagger docs will be accessible at: `http://localhost:8000/docs`.
+The backend API and Swagger docs will be accessible at `http://localhost:8000/docs`.
 
-### Step 6: Install Frontend Dependencies & Start Next.js
+### Step 7: Install Frontend Dependencies & Start Next.js
 Open a new terminal:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-The Next.js dashboard will be live at: `http://localhost:3000`.
-
-### Step 7: Configure the Provider
-The system defaults to `CALL_PROVIDER=browser`, `STT_PROVIDER=browser`, and `TTS_PROVIDER=browser`. This enables the native in-browser Web Speech recognition and synthesis pipeline without third-party telecom costs.
-*(If testing simulated failure modes, set `SIMULATE_FAILURE=stt|llm|provider` in `backend/.env`)*.
+The Next.js dashboard will be live at `http://localhost:3000`.
 
 ### Step 8: Start a Test Call in Google Chrome
-1. Open **Google Chrome** and browse to `http://localhost:3000`.
+1. Open **Google Chrome** and navigate to `http://localhost:3000`.
 2. Login with the seeded admin credentials:
    - **Email:** `admin@sephawk.com`
-   - **Password:** `AdminPassword123!`
-3. Navigate to **Contacts** (`/contacts`) and click **"Start Call"** on any contact (or add a new contact).
+   - **Password:** The password configured in `ADMIN_PASSWORD` in your `.env` (defaults to `Admin@123`).
+3. Navigate to **Contacts** (`/contacts`) and click **"Start Call"** on any contact.
 4. Allow Chrome microphone permissions when prompted.
-5. Speak naturally into your microphone (e.g., *"I need a 500 LPH RO plant for my hotel in Bangalore with a budget of 2 lakhs within 1 month"*).
-6. Click **"End Call"** and observe the live call summary, turn transcript, and 9 extracted slot cards on `/calls/[id]`.
+5. Speak naturally into your microphone (e.g., *"I need a 500 LPH RO plant for my hotel in Bangalore with a budget of 1 lakh within 1 month. My name is Rahul Kumar"*).
+6. Click **"End Call"** and review the real-time transcript, the 9 extracted slots, the AI executive summary, and the audit events on `/calls/[id]`.
 
 ---
 
-## 7. API Documentation
+## 7. API Reference
 
-| Method | Endpoint | Description | Auth Required | Key Request / Query Params |
+All backend routes are mounted without an `/api/v1` prefix.
+
+| Method | Endpoint | Description | Auth Required | Request / Query Parameters |
 | :--- | :--- | :--- | :---: | :--- |
-| `POST` | `/api/v1/auth/login` | Authenticate admin & receive JWT | No | JSON: `email`, `password` |
-| `GET` | `/api/v1/auth/me` | Fetch authenticated admin profile | Yes (Bearer) | Header: `Authorization: Bearer <token>` |
-| `GET` | `/api/v1/dashboard/stats` | Aggregated call metrics & KPI counters | Yes (Bearer) | None |
-| `GET` | `/api/v1/contacts` | List contacts with optional search | Yes (Bearer) | Query: `search`, `limit`, `offset` |
-| `POST` | `/api/v1/contacts` | Create a new validated sales contact | Yes (Bearer) | JSON: `name`, `phone_e164`, `company`, `purpose`, `product` |
-| `GET` | `/api/v1/contacts/{id}` | Retrieve contact details | Yes (Bearer) | Path: `id` (UUID) |
-| `GET` | `/api/v1/calls` | Filtered, paginated list of calls | Yes (Bearer) | Query: `status`, `lead_status`, `outcome`, `customer`, `date_from`, `date_to`, `page`, `page_size` |
-| `POST` | `/api/v1/calls` | Queue a new outbound call | Yes (Bearer) | JSON: `contact_id` or `phone_number` |
-| `GET` | `/api/v1/calls/{id}` | Full call dossier (turns, slots, summary, events) | Yes (Bearer) | Path: `id` (UUID) |
-| `WS` | `/ws/call/{call_id}` | Bidirectional audio & speech event stream | Yes (JWT query) | Query: `?token=<access_token>` |
+| `POST` | `/auth/login` | Exchange admin credentials for a JWT access token | No | JSON: `email`, `password` |
+| `GET` | `/auth/me` | Fetch authenticated admin identity | Yes (Bearer) | Header: `Authorization: Bearer <token>` |
+| `GET` | `/dashboard/stats` | Aggregated call metrics & KPI counters | Yes (Bearer) | None |
+| `GET` | `/contacts` | List contacts with optional search & pagination | Yes (Bearer) | Query: `search`, `limit`, `offset` |
+| `POST` | `/contacts` | Create a new validated sales contact | Yes (Bearer) | JSON: `name`, `phone_e164`, `company`, `purpose`, `product` |
+| `GET` | `/contacts/{contact_id}` | Retrieve contact details by ID | Yes (Bearer) | Path: `contact_id` (integer) |
+| `GET` | `/calls` | Filtered, paginated list of calls | Yes (Bearer) | Query: `status`, `lead_status`, `outcome`, `customer`, `date_from`, `date_to`, `page`, `page_size` |
+| `POST` | `/calls` | Queue a new outbound call | Yes (Bearer) | JSON: `contact_id` (int) or `phone_number` (E.164) |
+| `GET` | `/calls/{call_id}` | Full call dossier (turns, slots, summary, events) | Yes (Bearer) | Path: `call_id` (UUID) |
+| `GET` | `/health` | Liveness check & service status | No | None |
+| `WS` | `/ws/call/{call_id}` | Live bidirectional audio & speech event stream | Yes (Query) | Query: `?token=<jwt_access_token>` |
 
 ---
 
-## 8. Database Schema and ERD
+## 8. WebSocket Protocol Specification
+
+The `/ws/call/{call_id}?token={token}` endpoint powers the live interactive call session:
+
+### Client -> Server Messages
+| Type | Payload Schema | Description |
+| :--- | :--- | :--- |
+| `customer_speech` | `{"type": "customer_speech", "text": string, "confidence": float \| null}` | Customer transcribed utterance from Web Speech STT |
+| `interrupt` | `{"type": "interrupt"}` | Barge-in signal sent when customer speaks during agent TTS |
+| `end_call` | `{"type": "end_call"}` | Explicit termination signal when user clicks "End Call" |
+| `stt_failure` | `{"type": "stt_failure", "detail": object}` | Diagnostic error event emitted from `recognition.onerror` |
+
+### Server -> Client Messages
+| Type | Payload Schema | Description |
+| :--- | :--- | :--- |
+| `agent_reply` | `{"type": "agent_reply", "text": string, "turn_index": int}` | Formulated conversational reply for client TTS synthesis |
+| `state_update` | `{"type": "state_update", "slots": object, "phase": string, "pending_slot": string \| null}` | Real-time state of 9 qualification slots and FSM phase |
+| `call_status` | `{"type": "call_status", "status": string, "reason": string, "duration_seconds": int \| null}` | Terminal or updated call state (`completed`, `disconnected`, etc.) |
+| `error` | `{"type": "error", "detail": string}` | Protocol error notification |
+
+---
+
+## 9. Database Schema and ERD
 
 ```mermaid
 erDiagram
@@ -327,29 +375,28 @@ erDiagram
     CALLS ||--o{ CALL_EVENTS : logs
 
     ADMINS {
-        uuid id PK
+        integer id PK
         varchar email UK
         varchar password_hash
         timestamp created_at
     }
 
     CONTACTS {
-        uuid id PK
+        integer id PK
         varchar name
         varchar phone_e164
         varchar company
-        varchar purpose
+        text purpose
         varchar product
         timestamp created_at
-        timestamp updated_at
     }
 
     CALLS {
         uuid id PK
-        uuid contact_id FK
+        integer contact_id FK
         varchar phone_number
-        varchar direction
-        varchar provider
+        enum direction
+        enum provider
         varchar provider_call_sid
         enum status
         enum outcome
@@ -362,11 +409,11 @@ erDiagram
     }
 
     CALL_TURNS {
-        uuid id PK
+        integer id PK
         uuid call_id FK
         integer turn_index
         enum speaker
-        varchar message
+        text message
         float confidence
         timestamp created_at
     }
@@ -400,7 +447,7 @@ erDiagram
     }
 
     CALL_EVENTS {
-        uuid id PK
+        integer id PK
         uuid call_id FK
         varchar event_type
         jsonb detail
@@ -408,36 +455,237 @@ erDiagram
     }
 ```
 
+### Enumerations
+- **`CallStatus`**: `queued`, `ringing`, `in_progress`, `completed`, `no_answer`, `failed`, `disconnected`, `invalid_number`
+- **`CallOutcome`**: `interested`, `not_interested`, `callback_requested`, `no_response`, `failed`, `incomplete`
+- **`LeadStatus`**: `hot`, `warm`, `cold`, `interested`, `not_interested`, `unknown`
+- **`Speaker`**: `customer`, `agent`, `system`
+- **`CallDirection`**: `outbound`
+- **`CallProviderType`**: `browser`, `twilio`
+
 ---
 
-## 9. Error Handling
+## 10. Environment Variables
 
-The application features self-healing, multi-layer error handling across all realtime voice and database transactions:
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | `postgresql+asyncpg://.../calling_agent_db` | Async SQLAlchemy PostgreSQL connection string |
+| `APP_ENV` | `development` | Environment mode (`development`, `production`, `test`) |
+| `SECRET_KEY` | `change-me-...` | Cryptographic secret key used for JWT signing |
+| `ADMIN_EMAIL` | `admin@sephawk.com` | Seeded admin email address |
+| `ADMIN_PASSWORD` | `Admin@123` | Initial seeded admin password |
+| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
+| `JWT_EXPIRE_MINUTES` | `1440` | JWT token lifetime (24 hours) |
+| `LOGIN_RATE_LIMIT` | `5` | Maximum login attempts within the rate-limit window |
+| `LOGIN_RATE_WINDOW_SECONDS`| `60` | Login brute-force rate limit duration in seconds |
+| `GEMINI_API_KEY` | `""` | Google AI Studio API key for Gemini 2.5 Flash |
+| `LLM_PROVIDER` | `gemini` | LLM client provider (`gemini`) |
+| `LLM_MODEL` | `gemini-2.5-flash` | Gemini model identifier |
+| `LLM_MAX_RETRIES` | `2` | Retry attempts on transient LLM errors |
+| `STT_PROVIDER` | `browser` | Speech-to-Text provider (`browser`) |
+| `TTS_PROVIDER` | `browser` | Text-to-Speech provider (`browser`) |
+| `CALL_PROVIDER` | `browser` | Telephony / voice bridge (`browser`, `twilio`) |
+| `SILENCE_PROMPT_SECONDS` | `7.0` | Inactivity threshold before issuing a nudge |
+| `SILENCE_MAX_PROMPTS` | `2` | Maximum nudges before terminating with `silence_timeout` |
+| `FRONTEND_ORIGIN` | `http://localhost:3000` | Allowed CORS origin for Next.js frontend |
+| `SIMULATE_FAILURE` | `""` | Dev/demo failure simulation flag (`stt`, `llm`, `provider`) |
+| `TWILIO_ACCOUNT_SID` | `""` | Optional Twilio account SID |
+| `TWILIO_AUTH_TOKEN` | `""` | Optional Twilio authentication token |
+| `TWILIO_PHONE_NUMBER` | `""` | Optional Twilio assigned phone number |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Frontend backend API URL (in Next.js `.env.local`) |
+
+---
+
+## 11. Error Handling & Resilience
+
+The application features multi-layer error handling across real-time voice and database transactions:
 
 | Scenario | Trigger / Cause | Handled Call Status | Event Logged | Graceful Recovery Action |
 | :--- | :--- | :--- | :--- | :--- |
-| **STT Engine Error** | Browser speech recognition error (`network`, `no-speech`, `audio-capture`) | Remains `in_progress` | `stt_failure` | Live call captures `recognition.onerror`, sends diagnostic payload to `/ws/call`, and auto-restarts speech recognition. |
-| **LLM Outage / Timeout** | Gemini API rate limit, quota exhaustion, or network disconnect | Remains `in_progress` | `llm_failure` | The dialogue manager catches exceptions and transparently falls back to deterministic rule-based template phrasing. |
+| **STT Engine Error** | Browser speech recognition error (`network`, `audio-capture`) | Remains `in_progress` | `stt_failure` | Captures `recognition.onerror`, sends diagnostic payload to `/ws/call`, and auto-restarts speech recognition. |
+| **LLM Outage / Timeout** | Gemini API rate limit, quota exhaustion, or network disconnect | Remains `in_progress` | `llm_failure` | Catches exceptions and transparently falls back to deterministic rule-based template phrasing. |
 | **Provider Crash / Unhandled WS** | Exception inside WebSocket loop | Marks `failed` | `provider_error` | Closes socket with code 1011, records stack trace in `call_events`, and releases connection pool. |
-| **Silence / No Response** | Customer stays silent for >6s | Transitions to `completed` after 2 prompts | `silence_timeout` | Nudges caller ("Are you still there?"), increments counter, and terminates cleanly if silence persists. |
+| **Silence / No Response** | Customer stays silent for >7s | Transitions to `completed` after 2 prompts | `silence_timeout` | Nudges caller ("Are you still there?"), increments counter, and terminates cleanly if silence persists. |
 | **Customer Interruption (Barge-in)** | Customer speaks while agent TTS audio is actively rendering | Remains `in_progress` | `interrupted` | Frontend cancels browser `speechSynthesis`, emits barge-in event, and processes new customer utterance. |
-| **Abrupt Disconnect** | Network drop, tab closed, or navigation away mid-call | Marks `disconnected` | `disconnected` | Server receives `WebSocketDisconnect`, triggers shielded cleanup, persists partial turns, and generates summary of conversation had so far. |
+| **Abrupt Disconnect** | Network drop, tab closed, or navigation away mid-call | Marks `disconnected` | `disconnected` | Receives `WebSocketDisconnect`, runs shielded cleanup, persists partial turns, and generates summary of conversation had so far. |
 | **Invalid Phone Number** | Number fails E.164 standard validation (e.g. not matching `^\+[1-9]\d{1,14}$`) | Marks `invalid_number` / rejects 422 | `invalid_number` | API rejects contact creation with 422 Unprocessable Entity; when attempted on call initiation, marks status `invalid_number`. |
 
 ---
 
-## 10. Security Practices
+## 12. Security Practices
 
 - **Zero Hardcoded Secrets**: Secrets and API keys are strictly loaded via environment variables (`pydantic-settings`). `.gitignore` protects `.env` and `*.env.local`. `.env.example` contains only placeholder values.
 - **WebSocket Query Param Authentication**: The `/ws/call/{call_id}?token={token}` endpoint validates JWT bearer tokens before accepting the connection. Unauthenticated or expired connections are rejected with close code `1008` (Policy Violation).
 - **Non-Blocking Cryptography**: Password verification (`bcrypt.checkpw`) is offloaded to worker threads via `asyncio.to_thread` to prevent blocking the async FastAPI event loop.
 - **Concurrency & Race Condition Guards**: `CallSession` turn processing and lifecycle transitions (`finish()`) are guarded with `asyncio.Lock` to prevent interleaved silence timeouts, customer utterances, or duplicate summaries.
+- **Shielded Connection Cleanup**: Database session cleanup and summary persistence in the WebSocket `finally` block are wrapped in `anyio.CancelScope(shield=True)` so client disconnect cancellations cannot abort database commits.
 - **SQL Injection Prevention**: Completely parameterized SQL queries via SQLAlchemy 2.0 ORM expressions.
 - **Cross-Origin & CORS Protection**: Strict CORS origins whitelist restricting frontend domain access.
 
 ---
 
-## 11. Free-Tier Limitations
+## 13. Project Structure
+
+```
+AI-Powered-Two-Way-Calling-Agent/
+├── .env.example              # Environment variables template
+├── .gitignore                # Protects secrets, node_modules, .venv
+├── docker-compose.yml        # PostgreSQL container configuration
+├── Agent.md                  # Technical design specification
+├── README.md                 # Project documentation & runbook
+├── backend/
+│   ├── alembic/              # Database schema migrations
+│   │   ├── versions/         # Alembic migration revisions
+│   │   └── env.py
+│   ├── alembic.ini
+│   ├── app/
+│   │   ├── agent/            # Conversational agent & FSM
+│   │   │   ├── dialogue.py   # State machine dialogue engine
+│   │   │   ├── extractor.py  # Regex & heuristic slot extractor
+│   │   │   ├── llm.py        # Gemini 2.5 Flash client & retries
+│   │   │   ├── prompts.py    # System instructions & persona
+│   │   │   ├── slots.py      # Slot definitions & normalizers
+│   │   │   └── summary.py    # Post-call summary & sentiment
+│   │   ├── api/              # HTTP API endpoints
+│   │   │   ├── deps.py       # Auth dependencies & rate limiters
+│   │   │   └── v1/           # Modular route controllers
+│   │   │       ├── auth.py
+│   │   │       ├── calls.py
+│   │   │       ├── contacts.py
+│   │   │       └── dashboard.py
+│   │   ├── core/             # Application configuration
+│   │   │   ├── config.py     # Pydantic BaseSettings
+│   │   │   ├── errors.py     # Global exception handlers
+│   │   │   ├── logging.py    # Structured logging
+│   │   │   └── security.py   # JWT & bcrypt password hashing
+│   │   ├── db/               # Persistence layer
+│   │   │   ├── base.py       # DeclarativeBase
+│   │   │   ├── session.py    # Async engine & sessionmaker
+│   │   │   └── models/       # SQLAlchemy 2.0 ORM models
+│   │   │       ├── admin.py
+│   │   │       ├── call.py
+│   │   │       ├── call_event.py
+│   │   │       ├── call_extracted_data.py
+│   │   │       ├── call_summary.py
+│   │   │       ├── call_turn.py
+│   │   │       ├── contact.py
+│   │   │       └── enums.py
+│   │   ├── providers/        # Telephony abstraction layer
+│   │   │   ├── base.py       # CallProvider interface
+│   │   │   ├── browser.py    # Browser/WebSocket voice provider
+│   │   │   └── twilio.py     # Twilio Media Streams provider
+│   │   ├── realtime/         # Real-time WebSocket audio layer
+│   │   │   ├── call_session.py # Turn concurrency & lifecycle
+│   │   │   └── ws.py         # Duplex WebSocket router
+│   │   ├── schemas/          # Pydantic v2 validation models
+│   │   │   ├── auth.py
+│   │   │   ├── call.py
+│   │   │   ├── contact.py
+│   │   │   └── dashboard.py
+│   │   ├── services/         # Business logic layer
+│   │   │   ├── call_service.py
+│   │   │   ├── contact_service.py
+│   │   │   └── summary_service.py
+│   │   └── main.py           # FastAPI application factory
+│   ├── pyproject.toml        # Ruff, Black, Pytest configuration
+│   ├── requirements.txt      # Python dependencies
+│   ├── scripts/
+│   │   └── seed_db.py        # Database seeding utility
+│   └── tests/                # Automated pytest suite (102 tests)
+│       ├── conftest.py
+│       ├── test_agent_dialogue.py
+│       ├── test_agent_llm.py
+│       ├── test_auth.py
+│       ├── test_calls.py
+│       ├── test_config.py
+│       ├── test_contacts.py
+│       ├── test_dashboard.py
+│       ├── test_e2e_flow.py
+│       ├── test_errors.py
+│       ├── test_health.py
+│       ├── test_security.py
+│       ├── test_summary.py
+│       └── test_ws.py
+├── database/
+│   ├── schema.sql            # Direct SQL schema DDL
+│   ├── seed.sql              # Raw SQL seed script
+│   └── ERD.md                # Entity relationship documentation
+└── frontend/
+    ├── app/                  # Next.js 15 App Router pages
+    │   ├── calls/
+    │   │   ├── [id]/page.jsx # Call dossier, transcript & slots
+    │   │   └── page.jsx      # Paginated call history with 7 filters
+    │   ├── contacts/
+    │   │   └── page.jsx      # Contact directory & "Start Call"
+    │   ├── dashboard/
+    │   │   └── page.jsx      # Live KPI metrics & duration stats
+    │   ├── live-call/
+    │   │   └── [id]/page.jsx # Voice call with STT, TTS & barge-in
+    │   ├── login/
+    │   │   └── page.jsx      # Authentication form
+    │   ├── layout.jsx        # Shared layout with Auth Guard & Navbar
+    │   └── page.jsx          # Redirect to /dashboard
+    ├── components/
+    │   └── Navbar.jsx        # Navigation bar & logout
+    ├── lib/
+    │   └── api.js            # Fetch wrapper with Bearer token & 401 redirect
+    ├── next.config.mjs
+    └── package.json
+```
+
+---
+
+## 14. Testing
+
+The backend includes a comprehensive automated test suite with **102 tests** covering every layer:
+- **Unit & Property Tests**: Slot extraction regex, FSM phase transitions, rule-based fallback responses.
+- **LLM Client & Resilience**: Gemini API retries, JSON parsing recovery, fallback on rate-limits.
+- **Security & Auth**: Password hashing rounds, JWT expiration, login rate-limiting brute-force defense.
+- **REST Endpoints**: CRUD operations for contacts, filtered call queries, pagination, analytics KPI math.
+- **WebSocket & Realtime Lifecycle**: Handshake authentication with query param tokens, continuous speech turns, silence timeout intervals, barge-in interrupts, unhandled exception error logging, and graceful disconnect persistence.
+- **End-to-End Integration Flow**: Full multi-turn conversation and post-call analysis verification.
+
+### Run the Test Suite
+```bash
+cd backend
+python -m pytest -v
+```
+
+Output:
+```
+tests/test_agent_dialogue.py ............                                [ 11%]
+tests/test_agent_llm.py ...............                                  [ 26%]
+tests/test_auth.py ........                                              [ 34%]
+tests/test_calls.py ..................                                   [ 52%]
+tests/test_config.py ...                                                 [ 55%]
+tests/test_contacts.py ........                                          [ 63%]
+tests/test_dashboard.py ...                                              [ 66%]
+tests/test_e2e_flow.py .                                                 [ 67%]
+tests/test_errors.py ....                                                [ 71%]
+tests/test_health.py ...                                                 [ 74%]
+tests/test_security.py .....                                             [ 79%]
+tests/test_summary.py .........                                          [ 88%]
+tests/test_ws.py .............                                           [100%]
+
+============================ 102 passed in 27.22s =============================
+```
+
+### Run Code Formatters & Linters
+```bash
+cd backend
+python -m ruff check .
+python -m black --check .
+```
+
+### Run Frontend Production Build
+```bash
+cd frontend
+npm run build
+```
+
+---
+
+## 15. Free-Tier Limitations
 
 - **Google Gemini Flash API Quota**: Subject to Google AI Studio free-tier rate limits (15 requests/minute). High-frequency calls will automatically drop to rule-based fallback mode upon 429 quota exhaustion.
 - **Web Speech API Browser Compatibility**: Continuous STT via `webkitSpeechRecognition` is supported natively in Chromium-based browsers (Google Chrome, Microsoft Edge, Brave). Firefox and Safari require the Web Speech polyfill or Edge-TTS backend.
@@ -445,7 +693,7 @@ The application features self-healing, multi-layer error handling across all rea
 
 ---
 
-## 12. Future Improvements
+## 16. Future Improvements
 
 - **WebRTC Audio Streaming**: Implement bi-directional Opus-encoded WebRTC audio streaming to replace browser-level Web Speech API with server-side Whisper STT.
 - **Production Telephony (Twilio / Asterisk)**: Connect Twilio Voice Media Streams directly to a server-side WebSocket pipeline for real inbound and outbound phone PSTN calling.
