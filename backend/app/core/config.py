@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 1440
 
+    # ── Rate limiting (login brute-force guard) ────────────────────────
+    LOGIN_RATE_LIMIT: int = 5
+    LOGIN_RATE_WINDOW_SECONDS: int = 60
+
     # ── LLM ────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
     LLM_PROVIDER: str = "gemini"
