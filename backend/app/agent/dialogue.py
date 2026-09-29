@@ -216,6 +216,37 @@ class DialogueAgent:
             if application:
                 self.slots.set("application", application)
 
+        # Corrections to previously collected values ("actually 1000 LPH", "make it 1000 LPH")
+        if re.search(r"\b(actually|correction|change (?:that|it) to|instead of|make it)\b", text, re.I):
+            cap_m = _CAPACITY_RE.search(text)
+            if cap_m:
+                new_cap = _clean(cap_m.group(0)).upper().replace("LITRES", "LPH").replace("LITERS", "LPH")
+                self.slots.force_set("capacity", new_cap)
+            name_m = _NAME_RE.search(text)
+            if name_m:
+                self.slots.force_set("customer_name", _title_case_name(name_m.group(1)))
+
+    async def _run_llm_extraction(self, text: str) -> None:
+        """Extract slots via LLM with strict JSON schema and merge into state."""
+        if self.llm is None or not self.llm.available or settings.SIMULATE_FAILURE == "llm":
+            return
+        from app.agent.extractor import extract_slots_llm
+
+        extracted = await extract_slots_llm(self.llm, text, self.slots.values)
+        if not extracted:
+            return
+        data = extracted.model_dump(exclude_none=True)
+        is_corr = data.pop("is_correction", False)
+        corr_slot = data.pop("corrected_slot", None)
+        if is_corr and corr_slot and corr_slot in data:
+            self.slots.force_set(corr_slot, data[corr_slot])
+        for slot, val in data.items():
+            if val and slot in self.slots.values:
+                if is_corr:
+                    self.slots.force_set(slot, str(val))
+                else:
+                    self.slots.set(slot, str(val))
+
     # ── replies ──────────────────────────────────────────────────────────────
     def _answer_question(self, text: str) -> str:
         for pattern, answer in _ANSWER_BANK:
@@ -337,6 +368,7 @@ class DialogueAgent:
     async def handle(self, user_text: str) -> AgentTurn:
         """Process one customer utterance and return the agent's turn."""
         text = _clean(user_text)
+        await self._run_llm_extraction(text)
         reply, asked_slot = await self._compose_reply(text)
         return AgentTurn(
             reply=reply,
