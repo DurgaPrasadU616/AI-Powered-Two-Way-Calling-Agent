@@ -52,7 +52,7 @@ CREATE TABLE contacts (
 -- ── calls ─────────────────────────────────────────────────────────────────────
 CREATE TABLE calls (
     id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    contact_id        INTEGER      REFERENCES contacts(id),
+    contact_id        INTEGER      REFERENCES contacts(id) ON DELETE SET NULL,
     phone_number      VARCHAR(20)  NOT NULL,
     direction         call_direction  NOT NULL DEFAULT 'outbound',
     provider          call_provider   NOT NULL DEFAULT 'browser',
@@ -76,7 +76,7 @@ CREATE INDEX ix_calls_start_time       ON calls (start_time);
 -- ── call_turns ────────────────────────────────────────────────────────────────
 CREATE TABLE call_turns (
     id          SERIAL       PRIMARY KEY,
-    call_id     UUID         NOT NULL REFERENCES calls(id),
+    call_id     UUID         NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
     turn_index  INTEGER      NOT NULL,
     speaker     speaker_type NOT NULL,
     message     TEXT         NOT NULL,
@@ -89,7 +89,7 @@ CREATE INDEX ix_call_turns_call_id_turn_index ON call_turns (call_id, turn_index
 -- ── call_extracted_data ───────────────────────────────────────────────────────
 -- One row per call; updated live as agent extracts slots.
 CREATE TABLE call_extracted_data (
-    call_id                 UUID         PRIMARY KEY REFERENCES calls(id),
+    call_id                 UUID         PRIMARY KEY REFERENCES calls(id) ON DELETE CASCADE,
     customer_name           VARCHAR(255),
     company_name            VARCHAR(255),
     requirement             TEXT,
@@ -106,7 +106,7 @@ CREATE TABLE call_extracted_data (
 -- ── call_summaries ────────────────────────────────────────────────────────────
 -- One row per call; written post-call by summary_service.
 CREATE TABLE call_summaries (
-    call_id          UUID         PRIMARY KEY REFERENCES calls(id),
+    call_id          UUID         PRIMARY KEY REFERENCES calls(id) ON DELETE CASCADE,
     summary          TEXT,
     key_requirements JSONB,
     customer_intent  TEXT,
@@ -125,7 +125,7 @@ CREATE TABLE call_summaries (
 --                    call_started | call_ended | turn_saved
 CREATE TABLE call_events (
     id          SERIAL       PRIMARY KEY,
-    call_id     UUID         NOT NULL REFERENCES calls(id),
+    call_id     UUID         NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
     event_type  VARCHAR(100) NOT NULL,
     detail      JSONB,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()

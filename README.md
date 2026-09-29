@@ -1,6 +1,6 @@
 # AI-Powered Two-Way Calling Agent
 
-[![Tests](https://img.shields.io/badge/tests-120%20passed-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-122%20passed-brightgreen)](#testing)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
@@ -368,9 +368,13 @@ All REST endpoints are available under the `/api/v1` prefix (with compatibility 
 | `GET` | `/api/v1/contacts` | List contacts with optional search & pagination | Yes (Bearer) | Query: `search`, `limit`, `offset` |
 | `POST` | `/api/v1/contacts` | Create a new validated sales contact | Yes (Bearer) | JSON: `name`, `phone_e164`, `company`, `purpose`, `product` |
 | `GET` | `/api/v1/contacts/{contact_id}` | Retrieve contact details by ID | Yes (Bearer) | Path: `contact_id` (integer) |
+| `PATCH` | `/api/v1/contacts/{contact_id}` | Update contact details | Yes (Bearer) | Path: `contact_id` (int), JSON: fields to update |
+| `DELETE` | `/api/v1/contacts/{contact_id}` | Delete contact (preserves associated call history) | Yes (Bearer) | Path: `contact_id` (integer) |
 | `GET` | `/api/v1/calls` | Filtered, paginated list of calls | Yes (Bearer) | Query: `status`, `lead_status`, `outcome`, `customer`, `date_from`, `date_to`, `page`, `page_size` |
 | `POST` | `/api/v1/calls` | Queue a new outbound call | Yes (Bearer) | JSON: `contact_id` (int) or `phone_number` (E.164) |
 | `GET` | `/api/v1/calls/{call_id}` | Full call dossier (turns, slots, summary, events) | Yes (Bearer) | Path: `call_id` (UUID) |
+| `PATCH` | `/api/v1/calls/{call_id}` | Update call metadata (`lead_status`, `followup_required`, `outcome`) | Yes (Bearer) | Path: `call_id` (UUID), JSON: fields to update |
+| `POST` | `/api/v1/calls/{call_id}/end` | End an active call early | Yes (Bearer) | Path: `call_id` (UUID) |
 | `POST` | `/api/v1/webhooks/twilio/voice` | Twilio Voice webhook (returns TwiML with Speech `<Gather>`) | Twilio Signature | Form-urlencoded: `CallSid`, `From`, `To`, `SpeechResult` |
 | `POST` | `/api/v1/webhooks/twilio/status` | Twilio Call Status webhook (maps `ringing`, `in-progress`, `no-answer`, `completed`) | Twilio Signature | Form-urlencoded: `CallSid`, `CallStatus`, `CallDuration` |
 | `GET` | `/health` | Liveness check & service status | No | None |
@@ -679,11 +683,11 @@ AI-Powered-Two-Way-Calling-Agent/
 
 ## 14. Testing
 
-The backend includes a comprehensive automated test suite with **120 tests** covering every layer:
+The backend includes a comprehensive automated test suite with **122 tests** covering every layer:
 - **Unit & Property Tests**: Slot extraction regex, LLM JSON extraction, FSM phase transitions, rule-based fallback responses.
 - **LLM Client & Resilience**: Gemini API retries, JSON parsing recovery, fallback on rate-limits.
 - **Security & Auth**: Password hashing rounds, JWT expiration, login rate-limiting brute-force defense, Twilio signature verification.
-- **REST Endpoints**: CRUD operations for contacts, filtered call queries, pagination, analytics KPI math, Twilio webhooks.
+- **REST Endpoints**: CRUD operations for contacts (including search, update, delete with call preservation), filtered call queries, call metadata PATCH (`lead_status`, `followup_required`), pagination, analytics KPI math, Twilio webhooks.
 - **WebSocket & Realtime Lifecycle**: Handshake authentication with query param tokens, continuous speech turns, silence timeout intervals, barge-in interrupts, unhandled exception error logging, and graceful disconnect persistence.
 - **End-to-End Integration Flow**: Full multi-turn conversation and post-call analysis verification.
 - **Error Handling Matrix**: Explicit dedicated test verifying all 8 failure scenarios.
@@ -696,24 +700,24 @@ python -m pytest -v
 
 Output:
 ```
-tests/test_agent_dialogue.py ............                                [ 10%]
+tests/test_agent_dialogue.py ............                                [  9%]
 tests/test_agent_llm.py ...............                                  [ 22%]
-tests/test_auth.py ........                                              [ 29%]
-tests/test_calls.py ..................                                   [ 44%]
+tests/test_auth.py ........                                              [ 28%]
+tests/test_calls.py ...................                                  [ 44%]
 tests/test_config.py ...                                                 [ 46%]
-tests/test_contacts.py ........                                          [ 53%]
-tests/test_dashboard.py ...                                              [ 55%]
-tests/test_e2e_flow.py .                                                 [ 56%]
+tests/test_contacts.py .........                                         [ 54%]
+tests/test_dashboard.py ...                                              [ 56%]
+tests/test_e2e_flow.py .                                                 [ 57%]
 tests/test_error_handling_matrix.py ........                             [ 63%]
-tests/test_errors.py ....                                                [ 66%]
-tests/test_genai_extraction_and_correction.py .....                      [ 70%]
+tests/test_errors.py ....                                                [ 67%]
+tests/test_genai_extraction_and_correction.py .....                      [ 71%]
 tests/test_health.py ...                                                 [ 73%]
 tests/test_security.py .....                                             [ 77%]
 tests/test_summary.py .........                                          [ 85%]
 tests/test_twilio_provider.py .....                                      [ 89%]
 tests/test_ws.py .............                                           [100%]
 
-============================ 120 passed in 35.49s =============================
+============================ 122 passed in 47.24s =============================
 ```
 
 ### Run Code Formatters & Linters
